@@ -1,8 +1,9 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta charset="utf-8">
-<title>Steampunk Doom Survival</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Steampunk Survival FPS</title>
 
 <style>
 body{
@@ -22,7 +23,8 @@ canvas{
     top:10px;
     left:10px;
     z-index:5;
-    text-shadow:0 0 5px black;
+    text-shadow:0 0 4px black;
+    font-size:14px;
 }
 
 .bar{
@@ -30,41 +32,53 @@ canvas{
     height:12px;
     background:#111;
     border:1px solid #333;
-    margin:4px 0;
+    margin-bottom:8px;
 }
 
 .fill{
-    width:100%;
     height:100%;
+    width:100%;
     background:lime;
 }
 
-.menu{
+#menu{
     position:absolute;
     width:100%;
     height:100%;
+    background:radial-gradient(circle,#200,#000);
     display:flex;
     justify-content:center;
     align-items:center;
-    background:radial-gradient(circle,#200,#000);
     z-index:10;
 }
 
 .panel{
     background:rgba(0,0,0,0.92);
-    border:1px solid #400;
+    border:1px solid #500;
     padding:20px;
-    min-width:300px;
+    min-width:320px;
 }
 
 .option{
-    padding:8px;
-    margin:5px 0;
+    padding:10px;
     border:1px solid #222;
+    margin:5px 0;
 }
 
 .selected{
-    background:#400;
+    background:#500;
+}
+
+#crosshair{
+    position:absolute;
+    left:50%;
+    top:50%;
+    width:8px;
+    height:8px;
+    margin-left:-4px;
+    margin-top:-4px;
+    border:1px solid #ccc;
+    z-index:4;
 }
 </style>
 </head>
@@ -72,21 +86,35 @@ canvas{
 <body>
 
 <div id="hud">
-Survival
+SURVIVAL
 <div class="bar">
 <div id="survival" class="fill"></div>
 </div>
 
-Ammo: <span id="ammo">6</span><br>
-Weapon: Revolver<br><br>
+Weapon:
+<span id="weapon">Revolver</span><br>
 
-Meat: <span id="meat">0</span><br>
-Bone: <span id="bone">0</span><br>
-Scrap: <span id="scrap">0</span>
+Ammo:
+<span id="ammo">6</span><br><br>
+
+Meat:
+<span id="meat">0</span><br>
+
+Bone:
+<span id="bone">0</span><br>
+
+Scrap:
+<span id="scrap">0</span><br>
+
+Lantern:
+<span id="lantern">ON</span>
 </div>
 
-<div id="menu" class="menu">
+<div id="crosshair"></div>
+
+<div id="menu">
 <div class="panel">
+
 <h2>STEAMPUNK SURVIVAL</h2>
 
 <div id="menuOptions"></div>
@@ -94,316 +122,472 @@ Scrap: <span id="scrap">0</span>
 <br>
 A Select<br>
 B Back<br>
-Start Pause
+RB Sprint / Gas
 </div>
 </div>
 
 <canvas id="c"></canvas>
 
 <script>
-const c=document.getElementById("c");
-const ctx=c.getContext("2d");
+const c = document.getElementById("c");
+const ctx = c.getContext("2d");
 
-c.width=innerWidth;
-c.height=innerHeight;
+c.width = innerWidth;
+c.height = innerHeight;
 
-/* ---------------- GAME STATE ---------------- */
+/* ---------------- STATE ---------------- */
 
-let state="mainmenu";
+let state = "menu";
 
-let menus={
-mainmenu:[
+let menu = [
 "ENTER WASTELAND",
-"CRAFTING",
 "SAVE GAME"
-]
-};
+];
 
-let menuIndex=0;
-let inputLock=false;
+let menuIndex = 0;
 
 /* ---------------- PLAYER ---------------- */
 
-let player={
+let player = {
 x:3,
 y:3,
 angle:0,
 survival:100
 };
 
-let ammo=6;
+let ammo = 6;
 
-let loot={
+let loot = {
 meat:0,
 bone:0,
 scrap:0
 };
 
+let lantern = true;
+
+let quickCraft = false;
+
+/* ---------------- WEAPONS ---------------- */
+
+let weapons = [
+"Revolver",
+"Blade"
+];
+
+let weaponIndex = 0;
+
 /* ---------------- MAP ---------------- */
 
-const map=[
-[1,1,1,1,1,1,1,1,1,1],
-[1,0,0,0,0,0,0,0,0,1],
-[1,0,1,0,1,0,1,0,0,1],
-[1,0,1,0,0,0,1,0,0,1],
-[1,0,0,0,1,0,0,0,0,1],
-[1,0,1,0,0,0,1,0,0,1],
-[1,0,0,0,1,0,0,0,0,1],
-[1,0,0,0,0,0,0,1,0,1],
-[1,0,0,0,0,0,0,0,0,1],
-[1,1,1,1,1,1,1,1,1,1],
+const map = [
+[1,1,1,1,1,1,1,1,1,1,1,1],
+[1,0,0,0,0,0,0,0,0,0,0,1],
+[1,0,1,1,1,0,1,1,1,0,0,1],
+[1,0,0,0,1,0,0,0,1,0,0,1],
+[1,0,1,0,1,1,1,0,1,0,0,1],
+[1,0,1,0,0,0,1,0,0,0,0,1],
+[1,0,1,1,1,0,1,1,1,1,0,1],
+[1,0,0,0,1,0,0,0,0,1,0,1],
+[1,1,1,0,1,1,1,1,0,1,0,1],
+[1,0,0,0,0,0,0,1,0,0,0,1],
+[1,0,0,0,0,0,0,0,0,0,0,1],
+[1,1,1,1,1,1,1,1,1,1,1,1]
 ];
 
 function wall(x,y){
-return map[Math.floor(y)][Math.floor(x)]===1;
+
+let gx = Math.floor(x);
+let gy = Math.floor(y);
+
+if(
+gy < 0 ||
+gy >= map.length ||
+gx < 0 ||
+gx >= map[0].length
+)return true;
+
+return map[gy][gx] === 1;
 }
 
-/* ---------------- CONTROLLER ---------------- */
+/* ---------------- INPUT ---------------- */
 
-function pad(){
-return navigator.getGamepads()[0];
+let prevButtons = {};
+
+let input = {};
+
+function pressed(gp,index){
+
+let current = gp.buttons[index]?.pressed || false;
+
+let result = current && !prevButtons[index];
+
+prevButtons[index] = current;
+
+return result;
 }
 
-function dz(v){
-return Math.abs(v)<0.15?0:v;
-}
+function updateInput(){
 
-function press(btn){
-let gp=pad();
-if(!gp) return false;
+let gp = navigator.getGamepads()[0];
 
-if(gp.buttons[btn].pressed){
+if(!gp)return;
 
-if(!inputLock){
-inputLock=true;
-return true;
-}
+let dz = v => Math.abs(v)<0.15 ? 0 : v;
 
-}else{
-inputLock=false;
-}
+input.moveX = dz(gp.axes[0]);
+input.moveY = dz(gp.axes[1]);
 
-return false;
+input.a = pressed(gp,0);
+input.b = pressed(gp,1);
+input.x = pressed(gp,2);
+input.y = pressed(gp,3);
+
+input.lb = gp.buttons[4].pressed;
+input.rb = gp.buttons[5].pressed;
+
+input.start = pressed(gp,9);
+
+input.dup = pressed(gp,12);
+input.ddown = pressed(gp,13);
+input.dleft = pressed(gp,14);
+input.dright = pressed(gp,15);
 }
 
 /* ---------------- MENU ---------------- */
 
+function renderMenu(){
+
+let div = document.getElementById("menuOptions");
+
+div.innerHTML = "";
+
+menu.forEach((m,i)=>{
+
+let d = document.createElement("div");
+
+d.className = "option";
+
+if(i===menuIndex){
+d.classList.add("selected");
+}
+
+d.innerText = m;
+
+div.appendChild(d);
+
+});
+}
+
 function updateMenu(){
 
-if(press(12)){
+if(input.dup){
 menuIndex--;
 }
 
-if(press(13)){
+if(input.ddown){
 menuIndex++;
 }
 
-if(menuIndex<0)menuIndex=menus.mainmenu.length-1;
-if(menuIndex>=menus.mainmenu.length)menuIndex=0;
+if(menuIndex < 0)
+menuIndex = menu.length-1;
 
-if(press(0)){
+if(menuIndex >= menu.length)
+menuIndex = 0;
 
-let option=menus.mainmenu[menuIndex];
+if(input.a){
 
-if(option==="ENTER WASTELAND"){
-state="game";
+let option = menu[menuIndex];
+
+if(option === "ENTER WASTELAND"){
+
+state = "game";
+
 document.getElementById("menu").style.display="none";
+
 }
 
-if(option==="SAVE GAME"){
+if(option === "SAVE GAME"){
 saveGame();
 }
+
 }
 
 renderMenu();
-}
-
-function renderMenu(){
-
-let div=document.getElementById("menuOptions");
-
-div.innerHTML="";
-
-menus.mainmenu.forEach((m,i)=>{
-
-let el=document.createElement("div");
-
-el.className="option";
-
-if(i===menuIndex){
-el.classList.add("selected");
-}
-
-el.innerText=m;
-
-div.appendChild(el);
-
-});
 }
 
 /* ---------------- SAVE ---------------- */
 
 function saveGame(){
 
-localStorage.setItem("doomsave",JSON.stringify({
+localStorage.setItem("steampunksave",
+JSON.stringify({
 player,
 ammo,
-loot
+loot,
+weaponIndex
 }));
 
 }
 
 function loadGame(){
 
-let s=localStorage.getItem("doomsave");
+let s = localStorage.getItem("steampunksave");
 
 if(!s)return;
 
-s=JSON.parse(s);
+s = JSON.parse(s);
 
-player=s.player;
-ammo=s.ammo;
-loot=s.loot;
+player = s.player;
+ammo = s.ammo;
+loot = s.loot;
+weaponIndex = s.weaponIndex;
 }
 
 loadGame();
 
-/* ---------------- RAYCAST ---------------- */
+/* ---------------- MOVEMENT ---------------- */
 
-const FOV=Math.PI/3;
-const rays=140;
+let vel = 0;
+let rotVel = 0;
 
-function cast(angle){
+function updateMovement(){
 
-let dist=0;
+let moveTarget = -input.moveY;
+let turnTarget = input.moveX;
 
-while(dist<20){
+vel += (moveTarget - vel) * 0.15;
+rotVel += (turnTarget - rotVel) * 0.2;
 
-let nx=player.x+Math.cos(angle)*dist;
-let ny=player.y+Math.sin(angle)*dist;
+player.angle += rotVel * 0.05;
 
-if(wall(nx,ny)) return dist;
+let speed = input.rb ? 0.09 : 0.05;
 
-dist+=0.02;
+let nx =
+player.x +
+Math.cos(player.angle) *
+vel *
+speed;
+
+let ny =
+player.y +
+Math.sin(player.angle) *
+vel *
+speed;
+
+if(!wall(nx,ny)){
+
+player.x = nx;
+player.y = ny;
+
 }
 
-return 20;
+}
+
+/* ---------------- D-PAD ---------------- */
+
+function dpadActions(){
+
+if(input.dup){
+
+if(loot.meat > 0){
+
+loot.meat--;
+
+player.survival += 10;
+
+if(player.survival > 100)
+player.survival = 100;
+
+}
+}
+
+if(input.ddown){
+
+lantern = !lantern;
+
+}
+
+if(input.dleft){
+
+weaponIndex--;
+
+if(weaponIndex < 0)
+weaponIndex = weapons.length-1;
+
+}
+
+if(input.dright){
+
+quickCraft = !quickCraft;
+
+}
+
+}
+
+/* ---------------- INTERACTION ---------------- */
+
+let interact = {
+active:false,
+text:"",
+type:null
+};
+
+function checkInteractions(){
+
+interact.active = false;
+
+let dx = player.x - 5;
+let dy = player.y - 5;
+
+let d = Math.hypot(dx,dy);
+
+if(d < 1.5){
+
+interact.active = true;
+
+interact.text =
+"[A] REST   [X] SAVE";
+
+interact.type = "camp";
+
+}
+}
+
+function handleActions(){
+
+if(!interact.active)return;
+
+if(input.a){
+
+if(interact.type==="camp"){
+
+player.survival += 20;
+
+if(player.survival > 100)
+player.survival = 100;
+
+}
+}
+
+if(input.x){
+
+saveGame();
+
+}
+
 }
 
 /* ---------------- WOLVES ---------------- */
 
-let wolves=[];
+let wolves = [];
 
 function spawnWolf(){
 
-let angle=Math.random()*Math.PI*2;
+let angle = Math.random()*Math.PI*2;
 
-let dist=7+Math.random()*5;
+let dist = 7 + Math.random()*5;
 
 wolves.push({
-x:player.x+Math.cos(angle)*dist,
-y:player.y+Math.sin(angle)*dist,
-awake:Date.now()+6000
+x:player.x + Math.cos(angle)*dist,
+y:player.y + Math.sin(angle)*dist,
+awake:Date.now()+5000
 });
 
 }
 
-setInterval(spawnWolf,6000);
+setInterval(spawnWolf,7000);
 
 function updateWolves(){
 
 wolves.forEach(w=>{
 
-let dx=player.x-w.x;
-let dy=player.y-w.y;
+let dx = player.x - w.x;
+let dy = player.y - w.y;
 
-let d=Math.hypot(dx,dy);
+let d = Math.hypot(dx,dy);
 
-if(Date.now()<w.awake)return;
+if(Date.now() < w.awake)
+return;
 
-if(d<0.7){
+if(d < 5){
 
-player.survival-=0.05;
+w.x += dx * 0.002;
+w.y += dy * 0.002;
 
-w.x+=dx*0.015;
-w.y+=dy*0.015;
+}
 
-}else if(d<4){
+if(d < 0.7){
 
-w.x+=dx*0.003;
-w.y+=dy*0.003;
+player.survival -= 0.04;
 
 }
 
 });
-
 }
 
-/* ---------------- GAMEPLAY ---------------- */
+/* ---------------- RENDER ---------------- */
 
-function gameplay(){
+const FOV = Math.PI/3;
+const rays = 180;
 
-let gp=pad();
+function cast(angle){
 
-if(!gp)return;
+let dist = 0;
 
-let lx=dz(gp.axes[0]);
-let ly=dz(gp.axes[1]);
+while(dist < 20){
 
-player.angle+=lx*0.05;
+let nx =
+player.x +
+Math.cos(angle)*dist;
 
-let nx=player.x+Math.cos(player.angle)*(-ly)*0.05;
-let ny=player.y+Math.sin(player.angle)*(-ly)*0.05;
+let ny =
+player.y +
+Math.sin(angle)*dist;
 
-if(!wall(nx,ny)){
-player.x=nx;
-player.y=ny;
+if(wall(nx,ny))
+return dist;
+
+dist += 0.02;
 }
 
-if(gp.buttons[0].pressed && ammo>0){
-ammo--;
+return 20;
 }
-
-if(press(9)){
-state="mainmenu";
-document.getElementById("menu").style.display="flex";
-}
-
-}
-
-/* ---------------- DRAW ---------------- */
 
 function draw(){
 
-ctx.fillStyle="#000";
+ctx.fillStyle = "#000";
 ctx.fillRect(0,0,c.width,c.height);
 
-// fog/light
-let g=ctx.createRadialGradient(
-c.width/2,c.height/2,20,
-c.width/2,c.height/2,220
-);
+/* ceiling */
+ctx.fillStyle = "#090909";
+ctx.fillRect(0,0,c.width,c.height/2);
 
-g.addColorStop(0,"rgba(255,255,255,0.08)");
-g.addColorStop(1,"rgba(0,0,0,1)");
+/* floor */
+ctx.fillStyle = "#111";
+ctx.fillRect(0,c.height/2,c.width,c.height/2);
 
-ctx.fillStyle=g;
-ctx.fillRect(0,0,c.width,c.height);
-
-// walls
+/* walls */
 for(let i=0;i<rays;i++){
 
-let ang=player.angle-FOV/2+(i/rays)*FOV;
+let angle =
+player.angle -
+FOV/2 +
+(i/rays)*FOV;
 
-let d=cast(ang);
+let d = cast(angle);
 
-let h=c.height/d;
+d *= Math.cos(
+angle-player.angle
+);
 
-let shade=255-d*18;
+let h = c.height/d;
 
-if(shade<0)shade=0;
+let shade = 220 - d*16;
 
-ctx.fillStyle=`rgb(${shade},0,0)`;
+if(shade < 20)
+shade = 20;
+
+ctx.fillStyle =
+`rgb(${shade},${shade*0.3},${shade*0.2})`;
 
 ctx.fillRect(
 (i/rays)*c.width,
@@ -414,37 +598,123 @@ h
 
 }
 
-// wolves
+/* wolves */
 wolves.forEach(w=>{
 
-let dx=w.x-player.x;
-let dy=w.y-player.y;
+let dx = w.x-player.x;
+let dy = w.y-player.y;
 
-let d=Math.hypot(dx,dy);
+let dist = Math.hypot(dx,dy);
 
-if(d>10)return;
+if(dist > 8)return;
 
-let x=c.width/2+dx*40;
-let y=c.height/2+dy*40;
+let angle =
+Math.atan2(dy,dx)
+- player.angle;
 
-let size=180/d;
+while(angle < -Math.PI)
+angle += Math.PI*2;
 
-ctx.fillStyle="#aa0000";
+while(angle > Math.PI)
+angle -= Math.PI*2;
 
-ctx.beginPath();
-ctx.arc(x,y,size,0,Math.PI*2);
-ctx.fill();
+if(Math.abs(angle) > FOV/2)
+return;
+
+let screenX =
+(angle/(FOV/2))
+* (c.width/2)
++ c.width/2;
+
+let size = 260/dist;
+
+ctx.fillStyle = "#552222";
+
+ctx.fillRect(
+screenX-size/2,
+c.height/2-size/2,
+size,
+size
+);
 
 });
 
-// HUD
-document.getElementById("survival").style.width=player.survival+"%";
+/* darkness */
 
-document.getElementById("ammo").innerText=ammo;
+if(lantern){
 
-document.getElementById("meat").innerText=loot.meat;
-document.getElementById("bone").innerText=loot.bone;
-document.getElementById("scrap").innerText=loot.scrap;
+let g = ctx.createRadialGradient(
+c.width/2,
+c.height/2,
+20,
+
+c.width/2,
+c.height/2,
+260
+);
+
+g.addColorStop(0,"rgba(255,210,120,0.12)");
+g.addColorStop(1,"rgba(0,0,0,1)");
+
+ctx.fillStyle = g;
+ctx.fillRect(0,0,c.width,c.height);
+
+}else{
+
+ctx.fillStyle =
+"rgba(0,0,0,0.82)";
+
+ctx.fillRect(0,0,c.width,c.height);
+
+}
+
+/* prompt */
+if(interact.active){
+
+ctx.fillStyle =
+"rgba(0,0,0,0.7)";
+
+ctx.fillRect(
+c.width/2-130,
+c.height-90,
+260,
+40
+);
+
+ctx.fillStyle="#ccc";
+
+ctx.fillText(
+interact.text,
+c.width/2-90,
+c.height-65
+);
+
+}
+
+/* hud */
+document.getElementById("survival")
+.style.width =
+player.survival+"%";
+
+document.getElementById("ammo")
+.innerText = ammo;
+
+document.getElementById("weapon")
+.innerText =
+weapons[weaponIndex];
+
+document.getElementById("meat")
+.innerText = loot.meat;
+
+document.getElementById("bone")
+.innerText = loot.bone;
+
+document.getElementById("scrap")
+.innerText = loot.scrap;
+
+document.getElementById("lantern")
+.innerText =
+lantern ? "ON" : "OFF";
 
 }
 
@@ -452,12 +722,35 @@ document.getElementById("scrap").innerText=loot.scrap;
 
 function loop(){
 
-if(state==="mainmenu"){
+updateInput();
+
+if(state==="menu"){
+
 updateMenu();
+
 }else{
-gameplay();
+
+updateMovement();
+
+dpadActions();
+
+checkInteractions();
+
+handleActions();
+
 updateWolves();
-player.survival-=0.005;
+
+player.survival -= 0.003;
+
+if(input.start){
+
+state="menu";
+
+document.getElementById("menu")
+.style.display="flex";
+
+}
+
 }
 
 draw();
@@ -471,4 +764,4 @@ loop();
 </script>
 
 </body>
-</html>
+    </html>
