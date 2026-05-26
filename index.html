@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Steampunk Survival (Final Build)</title>
+
+<style>
+body {
+    margin: 0;
+    overflow: hidden;
+    background: #000;
+    font-family: monospace;
+    color: white;
+}
+
+#start, #menu {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%,-50%);
+    background: rgba(20,20,20,0.95);
+    padding: 15px;
+    border: 1px solid #555;
+    z-index: 10;
+}
+
+#hud {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 5;
+}
+
+.bar {
+    width: 240px;
+    height: 14px;
+    background: #222;
+    margin: 5px 0;
+}
+
+.fill {
+    height: 100%;
+    background: linear-gradient(to right, red, yellow, green);
+    width: 100%;
+}
+
+.option {
+    padding: 6px;
+    margin: 4px 0;
+    background: #111;
+}
+
+.option.selected {
+    background: #444;
+}
+</style>
+</head>
+
+<body>
+
+<!-- START -->
+<div id="start">
+    <h2>Survivor Selection</h2>
+    <button onclick="startGame('M')">Male</button>
+    <button onclick="startGame('F')">Female</button>
+</div>
+
+<!-- MENU -->
+<div id="menu" style="display:none;">
+    <h3>Field Crafting</h3>
+    <div id="recipes"></div>
+    <p>A craft | B close | X save</p>
+</div>
+
+<!-- HUD -->
+<div id="hud">
+    Survival
+    <div class="bar"><div id="survival" class="fill"></div></div>
+
+    Weapon: <span id="weapon">Rust Blade</span><br>
+    Ammo: <span id="ammo">-</span><br><br>
+
+    Loot:<br>
+    Meat <span id="meat">0</span> |
+    Bone <span id="bone">0</span> |
+    Pelt <span id="pelt">0</span> |
+    Scrap <span id="scrap">0</span><br><br>
+
+    Shelter: <span id="shelter">None</span><br>
+    Buggy: <span id="buggy">No</span>
+</div>
+
+<canvas id="world"></canvas>
+
+<script>
+const canvas = document.getElementById("world");
+const ctx = canvas.getContext("2d");
+canvas.width = innerWidth;
+canvas.height = innerHeight;
+
+/* ---------------- STATE ---------------- */
+
+let character = { gender:null };
+
+let player = {
+    x:0, y:0, angle:0,
+    survival:100
+};
+
+let loot = {
+    meat:0, bone:0, pelt:0,
+    scrap:3, gear:0, valve:0, coal:0
+};
+
+let weapon = { name:"Rust Blade", damage:10 };
+let ammo = 0;
+
+let shelter = { type:null, x:0, y:0 };
+let campfire = { x:0, y:0, active:false };
+
+let buggy = {
+    owned:false,
+    fuel:0,
+    storage:[]
+};
+
+let animals = [];
+
+/* ---------------- START ---------------- */
+
+function startGame(g){
+    character.gender = g;
+    document.getElementById("start").style.display = "none";
+    loadGame();
+}
+
+/* ---------------- SAVE SYSTEM ---------------- */
+
+function inShelter(){
+    if(!shelter.type) return false;
+    return Math.hypot(player.x-shelter.x, player.y-shelter.y) < 180;
+}
+
+function nearCampfire(){
+    if(!campfire.active) return false;
+    return Math.hypot(player.x-campfire.x, player.y-campfire.y) < 150;
+}
+
+function canSave(){
+    return inShelter() || nearCampfire();
+}
+
+function saveGame(){
+    if(!canSave()) return;
+
+    const data = {
+        character, player, loot,
+        weapon, ammo, shelter,
+        campfire, buggy
+    };
+
+    localStorage.setItem("save", JSON.stringify(data));
+}
+
+function loadGame(){
+    let data = localStorage.getItem("save");
+    if(!data) return;
+
+    let s = JSON.parse(data);
+
+    character = s.character;
+    player = s.player;
+    loot = s.loot;
+    weapon = s.weapon;
+    ammo = s.ammo;
+    shelter = s.shelter;
+    campfire = s.campfire;
+    buggy = s.buggy;
+}
+
+/* ---------------- RECIPES ---------------- */
+
+const recipes = [
+{
+    name:"Lean-to Shelter",
+    cost:{meat:1,scrap:1},
+    action:"lean"
+},
+{
+    name:"Hut Shelter",
+    cost:{pelt:1,bone:2,scrap:3},
+    action:"hut"
+},
+{
+    name:"Revolver",
+    cost:{scrap:2,gear:1,coal:1},
+    action:"gun"
+},
+{
+    name:"Campfire",
+    cost:{scrap:1,coal:1},
+    action:"fire"
+},
+{
+    name:"Build Buggy",
+    cost:{scrap:5,gear:3,valve:2},
+    action:"buggy"
+}
+];
+
+let selected = 0;
+let menu = false;
+
+/* ---------------- INPUT ---------------- */
+
+let keys={};
+document.addEventListener("keydown",e=>keys[e.key.toLowerCase()]=true);
+document.addEventListener("keyup",e=>keys[e.key.toLowerCase()]=false);
+
+function pad(){ return navigator.getGamepads()[0]; }
+
+/* ---------------- ZONES ---------------- */
+
+function zone(){
+    let d = Math.hypot(player.x,player.y);
+    if(d < 300) return "safe";
+    if(d < 800) return "field";
+    return "factory";
+}
+
+/* ---------------- ANIMALS ---------------- */
+
+function spawnAnimal(){
+    let r = Math.random();
+    let type = r < 0.4 ? "rabbit" : r < 0.75 ? "deer" : "wolf";
+
+    animals.push({
+        x:player.x+(Math.random()*600-300),
+        y:player.y+(Math.random()*600-300),
+        type,
+        hp:type==="rabbit"?10:type==="deer"?25:40,
+        maxHp:type==="rabbit"?10:type==="deer"?25:40
+    });
+}
+
+setInterval(spawnAnimal, 3000);
+
+function lootDrop(a){
+    let roll = Math.random();
+
+    if(a.type==="rabbit"){
+        loot.meat++;
+    }
+    if(a.type==="deer"){
+        roll<0.5?loot.meat++:loot.pelt++;
+    }
+    if(a.type==="wolf"){
+        roll<0.6?loot.bone++:loot.scrap++;
+    }
+}
+
+/* ---------------- CRAFT ---------------- */
+
+function craft(){
+    let r = recipes[selected];
+
+    for(let k in r.cost){
+        if(loot[k] < r.cost[k]) return;
+    }
+
+    for(let k in r.cost){
+        loot[k] -= r.cost[k];
+    }
+
+    if(r.action==="lean"){
+        shelter = {type:"lean",x:player.x,y:player.y};
+    }
+
+    if(r.action==="hut"){
+        shelter = {type:"hut",x:player.x,y:player.y};
+    }
+
+    if(r.action==="gun"){
+        weapon = {name:"Revolver",damage:40};
+        ammo = 6;
+    }
+
+    if(r.action==="fire"){
+        campfire = {x:player.x,y:player.y,active:true};
+    }
+
+    if(r.action==="buggy"){
+        buggy = {owned:true,fuel:10,storage:[]};
+    }
+}
+
+/* ---------------- GAME LOOP ---------------- */
+
+function update(){
+
+    let gp = pad();
+
+    if(menu){
+        document.getElementById("menu").style.display="block";
+
+        if(gp){
+            if(gp.buttons[12].pressed) selected--;
+            if(gp.buttons[13].pressed) selected++;
+
+            selected = Math.max(0,Math.min(recipes.length-1,selected));
+
+            if(gp.buttons[0].pressed) craft();
+            if(gp.buttons[1].pressed) menu=false;
+            if(gp.buttons[2].pressed) saveGame();
+        }
+
+        renderMenu();
+        return;
+    }
+
+    document.getElementById("menu").style.display="none";
+
+    if(gp){
+        if(gp.buttons[9].pressed) menu=true;
+
+        player.angle += gp.axes[0]*0.03;
+        player.x += Math.cos(player.angle)*(-gp.axes[1])*1.2;
+        player.y += Math.sin(player.angle)*(-gp.axes[1])*1.2;
+
+        if(gp.buttons[0].pressed && ammo>0){
+            ammo--;
+            player.survival -= 0.8;
+        }
+    }
+
+    player.survival -= 0.01;
+
+    if(inShelter()) player.survival += shelter.type==="hut"?0.06:0.03;
+    if(nearCampfire()) player.survival += 0.04;
+
+    player.survival = Math.max(0,Math.min(100,player.survival));
+
+    animals.forEach(a=>{
+        let dx = player.x-a.x;
+        let dy = player.y-a.y;
+        let d = Math.hypot(dx,dy);
+
+        if(a.type==="rabbit" && d<200){
+            a.x -= dx*0.03;
+            a.y -= dy*0.03;
+        }
+
+        if(a.type==="deer" && d<250){
+            a.x -= dx*0.02;
+            a.y -= dy*0.02;
+        }
+
+        if(a.type==="wolf" && d<300){
+            a.x += dx*0.015;
+            a.y += dy*0.015;
+        }
+    });
+}
+
+/* ---------------- RENDER ---------------- */
+
+function draw(){
+    ctx.fillStyle="rgba(0,0,0,0.7)";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    ctx.fillStyle="cyan";
+    ctx.fillRect(canvas.width/2-5,canvas.height/2-5,10,10);
+
+    animals.forEach(a=>{
+        let dx=a.x-player.x;
+        let dy=a.y-player.y;
+        let d=Math.hypot(dx,dy);
+        let size=Math.max(2,200/d);
+
+        ctx.fillStyle=a.type==="rabbit"?"#ccc":a.type==="deer"?"#2ecc71":"#e74c3c";
+        ctx.fillRect(canvas.width/2+dx*0.1,canvas.height/2+dy*0.1,size,size);
+
+        ctx.fillStyle="#400";
+        ctx.fillRect(canvas.width/2+dx*0.1,canvas.height/2+dy*0.1-6,size,3);
+
+        ctx.fillStyle="#0f0";
+        ctx.fillRect(canvas.width/2+dx*0.1,canvas.height/2+dy*0.1-6,size*(a.hp/a.maxHp),3);
+    });
+
+    document.getElementById("survival").style.width=player.survival+"%";
+
+    document.getElementById("weapon").innerText=weapon.name;
+    document.getElementById("ammo").innerText=ammo;
+
+    document.getElementById("meat").innerText=loot.meat;
+    document.getElementById("bone").innerText=loot.bone;
+    document.getElementById("pelt").innerText=loot.pelt;
+    document.getElementById("scrap").innerText=loot.scrap;
+
+    document.getElementById("shelter").innerText=shelter.type||"None";
+    document.getElementById("buggy").innerText=buggy.owned?"Yes":"No";
+}
+
+function renderMenu(){
+    let div=document.getElementById("recipes");
+    div.innerHTML="";
+    recipes.forEach((r,i)=>{
+        let el=document.createElement("div");
+        el.className="option"+(i===selected?" selected":"");
+        el.innerHTML=r.name;
+        div.appendChild(el);
+    });
+}
+
+function loop(){
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+
+</body>
+</html>
