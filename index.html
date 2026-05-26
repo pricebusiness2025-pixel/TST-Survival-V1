@@ -2,15 +2,19 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Steampunk Survival v3</title>
+<title>Steampunk Doom Survival</title>
 
 <style>
 body{
     margin:0;
     overflow:hidden;
-    background:#000;
+    background:black;
     font-family:monospace;
-    color:#aaa;
+    color:#ccc;
+}
+
+canvas{
+    display:block;
 }
 
 #hud{
@@ -18,71 +22,80 @@ body{
     top:10px;
     left:10px;
     z-index:5;
-    color:#bbb;
-    text-shadow:0 0 6px #000;
+    text-shadow:0 0 5px black;
 }
 
 .bar{
-    width:240px;
+    width:220px;
     height:12px;
     background:#111;
+    border:1px solid #333;
     margin:4px 0;
-    border:1px solid #222;
 }
 
 .fill{
-    height:100%;
-    background:linear-gradient(to right, #400, #f00, #0f0);
     width:100%;
+    height:100%;
+    background:lime;
 }
 
-#start,#menu{
+.menu{
     position:absolute;
-    top:50%;
-    left:50%;
-    transform:translate(-50%,-50%);
-    background:rgba(10,10,10,0.98);
-    padding:15px;
-    border:1px solid #333;
+    width:100%;
+    height:100%;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    background:radial-gradient(circle,#200,#000);
+    z-index:10;
+}
+
+.panel{
+    background:rgba(0,0,0,0.92);
+    border:1px solid #400;
+    padding:20px;
+    min-width:300px;
 }
 
 .option{
-    padding:6px;
-    margin:4px 0;
-    background:#111;
+    padding:8px;
+    margin:5px 0;
+    border:1px solid #222;
 }
-.option.selected{background:#333;}
+
+.selected{
+    background:#400;
+}
 </style>
 </head>
 
 <body>
 
-<div id="start">
-<h2>Survivor</h2>
-<button onclick="startGame('M')">Male</button>
-<button onclick="startGame('F')">Female</button>
-</div>
-
-<div id="menu" style="display:none;">
-<h3>Craft</h3>
-<div id="recipes"></div>
-<p>A craft | B close | X save</p>
-</div>
-
 <div id="hud">
 Survival
-<div class="bar"><div id="survival" class="fill"></div></div>
+<div class="bar">
+<div id="survival" class="fill"></div>
+</div>
 
-Weapon: <span id="weapon">Blade</span><br>
-Ammo: <span id="ammo">-</span><br><br>
+Ammo: <span id="ammo">6</span><br>
+Weapon: Revolver<br><br>
 
-Meat <span id="meat">0</span> |
-Bone <span id="bone">0</span> |
-Pelt <span id="pelt">0</span> |
-Scrap <span id="scrap">0</span><br><br>
+Meat: <span id="meat">0</span><br>
+Bone: <span id="bone">0</span><br>
+Scrap: <span id="scrap">0</span>
+</div>
 
-Shelter: <span id="shelter">None</span><br>
-Buggy: <span id="buggy">No</span>
+<div id="menu" class="menu">
+<div class="panel">
+<h2>STEAMPUNK SURVIVAL</h2>
+
+<div id="menuOptions"></div>
+
+<br>
+A Select<br>
+B Back<br>
+Start Pause
+</div>
 </div>
 
 <canvas id="c"></canvas>
@@ -90,74 +103,248 @@ Buggy: <span id="buggy">No</span>
 <script>
 const c=document.getElementById("c");
 const ctx=c.getContext("2d");
+
 c.width=innerWidth;
 c.height=innerHeight;
 
-/* ---------------- STATE ---------------- */
+/* ---------------- GAME STATE ---------------- */
 
-let character={gender:null};
+let state="mainmenu";
 
-let player={x:0,y:0,angle:0,survival:100};
+let menus={
+mainmenu:[
+"ENTER WASTELAND",
+"CRAFTING",
+"SAVE GAME"
+]
+};
 
-let loot={meat:0,bone:0,pelt:0,scrap:3,gear:0,valve:0,coal:0};
+let menuIndex=0;
+let inputLock=false;
 
-let weapon={name:"Rust Blade",damage:10};
-let ammo=0;
+/* ---------------- PLAYER ---------------- */
 
-let shelter={type:null,x:0,y:0};
+let player={
+x:3,
+y:3,
+angle:0,
+survival:100
+};
 
-let campfire={x:0,y:0,active:false};
+let ammo=6;
 
-let buggy={owned:false,fuel:0,storage:[]};
+let loot={
+meat:0,
+bone:0,
+scrap:0
+};
 
-let animals=[];
+/* ---------------- MAP ---------------- */
 
-/* ---------------- START ---------------- */
+const map=[
+[1,1,1,1,1,1,1,1,1,1],
+[1,0,0,0,0,0,0,0,0,1],
+[1,0,1,0,1,0,1,0,0,1],
+[1,0,1,0,0,0,1,0,0,1],
+[1,0,0,0,1,0,0,0,0,1],
+[1,0,1,0,0,0,1,0,0,1],
+[1,0,0,0,1,0,0,0,0,1],
+[1,0,0,0,0,0,0,1,0,1],
+[1,0,0,0,0,0,0,0,0,1],
+[1,1,1,1,1,1,1,1,1,1],
+];
 
-function startGame(g){
-character.gender=g;
-document.getElementById("start").style.display="none";
-loadGame();
-}
-
-/* ---------------- SAVE ---------------- */
-
-function canSave(){
-let d1 = shelter.type && Math.hypot(player.x-shelter.x,player.y-shelter.y)<180;
-let d2 = campfire.active && Math.hypot(player.x-campfire.x,player.y-campfire.y)<150;
-return d1||d2;
-}
-
-function saveGame(){
-if(!canSave()) return;
-
-localStorage.setItem("save", JSON.stringify({
-character,player,loot,weapon,ammo,shelter,campfire,buggy
-}));
-}
-
-function loadGame(){
-let s=localStorage.getItem("save");
-if(!s)return;
-s=JSON.parse(s);
-
-character=s.character;
-player=s.player;
-loot=s.loot;
-weapon=s.weapon;
-ammo=s.ammo;
-shelter=s.shelter;
-campfire=s.campfire;
-buggy=s.buggy;
+function wall(x,y){
+return map[Math.floor(y)][Math.floor(x)]===1;
 }
 
 /* ---------------- CONTROLLER ---------------- */
 
-function pad(){return navigator.getGamepads()[0];}
-function dz(v){return Math.abs(v)<0.15?0:v;}
+function pad(){
+return navigator.getGamepads()[0];
+}
 
-function control(){
+function dz(v){
+return Math.abs(v)<0.15?0:v;
+}
+
+function press(btn){
 let gp=pad();
+if(!gp) return false;
+
+if(gp.buttons[btn].pressed){
+
+if(!inputLock){
+inputLock=true;
+return true;
+}
+
+}else{
+inputLock=false;
+}
+
+return false;
+}
+
+/* ---------------- MENU ---------------- */
+
+function updateMenu(){
+
+if(press(12)){
+menuIndex--;
+}
+
+if(press(13)){
+menuIndex++;
+}
+
+if(menuIndex<0)menuIndex=menus.mainmenu.length-1;
+if(menuIndex>=menus.mainmenu.length)menuIndex=0;
+
+if(press(0)){
+
+let option=menus.mainmenu[menuIndex];
+
+if(option==="ENTER WASTELAND"){
+state="game";
+document.getElementById("menu").style.display="none";
+}
+
+if(option==="SAVE GAME"){
+saveGame();
+}
+}
+
+renderMenu();
+}
+
+function renderMenu(){
+
+let div=document.getElementById("menuOptions");
+
+div.innerHTML="";
+
+menus.mainmenu.forEach((m,i)=>{
+
+let el=document.createElement("div");
+
+el.className="option";
+
+if(i===menuIndex){
+el.classList.add("selected");
+}
+
+el.innerText=m;
+
+div.appendChild(el);
+
+});
+}
+
+/* ---------------- SAVE ---------------- */
+
+function saveGame(){
+
+localStorage.setItem("doomsave",JSON.stringify({
+player,
+ammo,
+loot
+}));
+
+}
+
+function loadGame(){
+
+let s=localStorage.getItem("doomsave");
+
+if(!s)return;
+
+s=JSON.parse(s);
+
+player=s.player;
+ammo=s.ammo;
+loot=s.loot;
+}
+
+loadGame();
+
+/* ---------------- RAYCAST ---------------- */
+
+const FOV=Math.PI/3;
+const rays=140;
+
+function cast(angle){
+
+let dist=0;
+
+while(dist<20){
+
+let nx=player.x+Math.cos(angle)*dist;
+let ny=player.y+Math.sin(angle)*dist;
+
+if(wall(nx,ny)) return dist;
+
+dist+=0.02;
+}
+
+return 20;
+}
+
+/* ---------------- WOLVES ---------------- */
+
+let wolves=[];
+
+function spawnWolf(){
+
+let angle=Math.random()*Math.PI*2;
+
+let dist=7+Math.random()*5;
+
+wolves.push({
+x:player.x+Math.cos(angle)*dist,
+y:player.y+Math.sin(angle)*dist,
+awake:Date.now()+6000
+});
+
+}
+
+setInterval(spawnWolf,6000);
+
+function updateWolves(){
+
+wolves.forEach(w=>{
+
+let dx=player.x-w.x;
+let dy=player.y-w.y;
+
+let d=Math.hypot(dx,dy);
+
+if(Date.now()<w.awake)return;
+
+if(d<0.7){
+
+player.survival-=0.05;
+
+w.x+=dx*0.015;
+w.y+=dy*0.015;
+
+}else if(d<4){
+
+w.x+=dx*0.003;
+w.y+=dy*0.003;
+
+}
+
+});
+
+}
+
+/* ---------------- GAMEPLAY ---------------- */
+
+function gameplay(){
+
+let gp=pad();
+
 if(!gp)return;
 
 let lx=dz(gp.axes[0]);
@@ -165,136 +352,121 @@ let ly=dz(gp.axes[1]);
 
 player.angle+=lx*0.05;
 
-let sp=1.9;
-player.x+=Math.cos(player.angle)*(-ly)*sp;
-player.y+=Math.sin(player.angle)*(-ly)*sp;
+let nx=player.x+Math.cos(player.angle)*(-ly)*0.05;
+let ny=player.y+Math.sin(player.angle)*(-ly)*0.05;
 
-if(gp.buttons[9].pressed){
-document.getElementById("menu").style.display="block";
+if(!wall(nx,ny)){
+player.x=nx;
+player.y=ny;
 }
 
-if(gp.buttons[2].pressed){
-saveGame();
-}
-}
-
-/* ---------------- WORLD ---------------- */
-
-function spawn(){
-let r=Math.random();
-let t=r<0.4?"rabbit":r<0.75?"deer":"wolf";
-
-animals.push({
-x:player.x+(Math.random()*700-350),
-y:player.y+(Math.random()*700-350),
-type:t,
-hp:t==="rabbit"?10:t==="deer"?25:45,
-maxHp:t==="rabbit"?10:t==="deer"?25:45
-});
-}
-setInterval(spawn,2600);
-
-/* ---------------- UPDATE ---------------- */
-
-function update(){
-
-control();
-
-player.survival-=0.01;
-
-if(shelter.type){
-let d=Math.hypot(player.x-shelter.x,player.y-shelter.y);
-if(d<180)player.survival+=shelter.type==="hut"?0.06:0.03;
+if(gp.buttons[0].pressed && ammo>0){
+ammo--;
 }
 
-if(campfire.active){
-let d=Math.hypot(player.x-campfire.x,player.y-campfire.y);
-if(d<150)player.survival+=0.05;
+if(press(9)){
+state="mainmenu";
+document.getElementById("menu").style.display="flex";
 }
-
-player.survival=Math.max(0,Math.min(100,player.survival));
-
-animals.forEach(a=>{
-let dx=player.x-a.x;
-let dy=player.y-a.y;
-let d=Math.hypot(dx,dy);
-
-if(a.type==="rabbit"&&d<200){a.x-=dx*0.03;a.y-=dy*0.03;}
-if(a.type==="deer"&&d<250){a.x-=dx*0.02;a.y-=dy*0.02;}
-if(a.type==="wolf"&&d<300){a.x+=dx*0.015;a.y+=dy*0.015;}
-});
 
 }
 
-/* ---------------- DOOM RENDER ---------------- */
+/* ---------------- DRAW ---------------- */
 
 function draw(){
 
-// heavy fog darkness (doom style)
-ctx.fillStyle="#020202";
+ctx.fillStyle="#000";
 ctx.fillRect(0,0,c.width,c.height);
 
-ctx.fillStyle="rgba(0,0,0,0.25)";
+// fog/light
+let g=ctx.createRadialGradient(
+c.width/2,c.height/2,20,
+c.width/2,c.height/2,220
+);
+
+g.addColorStop(0,"rgba(255,255,255,0.08)");
+g.addColorStop(1,"rgba(0,0,0,1)");
+
+ctx.fillStyle=g;
 ctx.fillRect(0,0,c.width,c.height);
 
-// subtle grain
-for(let i=0;i<60;i++){
-ctx.fillStyle="rgba(255,0,0,0.02)";
-ctx.fillRect(Math.random()*c.width,Math.random()*c.height,2,2);
+// walls
+for(let i=0;i<rays;i++){
+
+let ang=player.angle-FOV/2+(i/rays)*FOV;
+
+let d=cast(ang);
+
+let h=c.height/d;
+
+let shade=255-d*18;
+
+if(shade<0)shade=0;
+
+ctx.fillStyle=`rgb(${shade},0,0)`;
+
+ctx.fillRect(
+(i/rays)*c.width,
+c.height/2-h/2,
+c.width/rays+1,
+h
+);
+
 }
 
-// player glow (ONLY bright object)
-ctx.fillStyle="#00ffff";
-ctx.beginPath();
-ctx.arc(c.width/2,c.height/2,6,0,Math.PI*2);
-ctx.fill();
+// wolves
+wolves.forEach(w=>{
 
-// animals (low light silhouettes)
-animals.forEach(a=>{
-let dx=a.x-player.x;
-let dy=a.y-player.y;
+let dx=w.x-player.x;
+let dy=w.y-player.y;
 
-let x=c.width/2+dx*0.12;
-let y=c.height/2+dy*0.12;
+let d=Math.hypot(dx,dy);
 
-let size=16/Math.max(1,Math.hypot(dx,dy)*0.01);
+if(d>10)return;
 
-ctx.fillStyle=a.type==="wolf"?"#aa0000":a.type==="deer"?"#227722":"#888";
+let x=c.width/2+dx*40;
+let y=c.height/2+dy*40;
+
+let size=180/d;
+
+ctx.fillStyle="#aa0000";
 
 ctx.beginPath();
 ctx.arc(x,y,size,0,Math.PI*2);
 ctx.fill();
 
-ctx.fillStyle="#300";
-ctx.fillRect(x-size,y-10,size*2,3);
-
-ctx.fillStyle="#0f0";
-ctx.fillRect(x-size,y-10,size*2*(a.hp/a.maxHp),3);
 });
 
 // HUD
 document.getElementById("survival").style.width=player.survival+"%";
-document.getElementById("weapon").innerText=weapon.name;
+
 document.getElementById("ammo").innerText=ammo;
 
 document.getElementById("meat").innerText=loot.meat;
 document.getElementById("bone").innerText=loot.bone;
-document.getElementById("pelt").innerText=loot.pelt;
 document.getElementById("scrap").innerText=loot.scrap;
-
-document.getElementById("shelter").innerText=shelter.type||"None";
-document.getElementById("buggy").innerText=buggy.owned?"Yes":"No";
 
 }
 
 /* ---------------- LOOP ---------------- */
 
 function loop(){
-update();
-draw();
-requestAnimationFrame(loop);
+
+if(state==="mainmenu"){
+updateMenu();
+}else{
+gameplay();
+updateWolves();
+player.survival-=0.005;
 }
 
+draw();
+
+requestAnimationFrame(loop);
+
+}
+
+renderMenu();
 loop();
 </script>
 
