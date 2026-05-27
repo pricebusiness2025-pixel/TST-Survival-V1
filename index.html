@@ -2,9 +2,9 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Survival City v3 - Full Working Model</title>
+<title>Survival Engine v1</title>
 <style>
-body{margin:0;overflow:hidden;background:black;}
+body{margin:0;overflow:hidden;background:#000;}
 canvas{display:block;}
 #ui{
 position:absolute;
@@ -13,6 +13,8 @@ left:10px;
 color:white;
 font-family:monospace;
 font-size:14px;
+background:rgba(0,0,0,0.4);
+padding:10px;
 }
 </style>
 </head>
@@ -28,54 +30,50 @@ const ctx=c.getContext("2d");
 c.width=innerWidth;
 c.height=innerHeight;
 
-const SIZE=40;
+const SIZE=50;
 
-/* ================= WORLD ================= */
+/* ================= STATE ================= */
 
 let world=[];
-let buildings=[];
 let animals=[];
 
-let inBuilding=false;
+let mode="world"; // world | interior
 
 let p={x:10,y:10,a:0};
 
-let inventory={scrap:0,food:0,ammo:3};
-let hasGun=true;
+let inventory={
+scrap:0,
+food:0,
+ammo:6
+};
 
 let noise=0;
 
-/* ================= GENERATION ================= */
+/* interior */
+let interior=null;
+
+/* ================= WORLD GEN ================= */
 
 function genWorld(){
 for(let y=0;y<SIZE;y++){
 world[y]=[];
 for(let x=0;x<SIZE;x++){
 
-if(x%6===0||y%6===0){
-world[y][x]=0; // streets
-}else{
-world[y][x]=Math.random()<0.8?1:0;
-}
+let d=(Math.floor(x/10)+Math.floor(y/10))%3;
+
+/* districts */
+let wall = Math.random()<0.75;
+
+if(x%7===0||y%7===0) wall=true;
+
+world[y][x]=wall?1:0;
 
 }
-}
-}
-
-function genBuildings(){
-const t=["🏚️","🏢","🏭","🚓"];
-
-for(let i=0;i<35;i++){
-buildings.push({
-x:Math.random()*SIZE,
-y:Math.random()*SIZE,
-t:t[Math.random()*t.length|0]
-});
 }
 }
 
 function genAnimals(){
-for(let i=0;i<25;i++){
+for(let i=0;i<30;i++){
 let r=Math.random();
 animals.push({
 x:Math.random()*SIZE,
@@ -87,14 +85,20 @@ vx:0,vy:0
 }
 
 genWorld();
-genBuildings();
 genAnimals();
 
 /* ================= INPUT ================= */
 
 function gp(){
-return navigator.getGamepads?.()[0];
+let g=navigator.getGamepads?.()[0];
+if(!g) return null;
+g.axes=g.axes.map(v=>Math.abs(v)<0.15?0:v);
+return g;
 }
+
+let keys={};
+window.addEventListener("keydown",e=>keys[e.key]=true);
+window.addEventListener("keyup",e=>keys[e.key]=false);
 
 /* ================= TILE ================= */
 
@@ -104,24 +108,95 @@ if(x<0||y<0||x>=SIZE||y>=SIZE) return 1;
 return world[y][x];
 }
 
-/* ================= BUILDING ================= */
+/* ================= INTERACTION ================= */
 
 function enterBuilding(){
-inBuilding=true;
+mode="interior";
+
+interior={
+rooms:3,
+loot:[
+{t:"scrap",x:2,y:2},
+{t:"ammo",x:4,y:3},
+{t:"food",x:6,y:6}
+]
+};
+
 p.x=5;p.y=5;
 noise+=2;
-inventory.scrap++;
-inventory.food++;
-inventory.ammo++;
 }
 
 function exitBuilding(){
-inBuilding=false;
+mode="world";
 p.x+=2;
 p.y+=2;
 }
 
-/* ================= ANIMALS ================= */
+/* ================= MOVEMENT ================= */
+
+function move(){
+
+let g=gp();
+
+let sp=0.05;
+
+/* keyboard */
+if(keys["w"]) p.y+=Math.sin(p.a)*sp, p.x+=Math.cos(p.a)*sp;
+if(keys["s"]) p.y-=Math.sin(p.a)*sp, p.x-=Math.cos(p.a)*sp;
+if(keys["a"]) p.a-=0.04;
+if(keys["d"]) p.a+=0.04;
+
+/* controller */
+if(g){
+
+p.a += (g.axes[2]||0)*0.04;
+
+let lx=g.axes[0]||0;
+let ly=g.axes[1]||0;
+
+p.x += Math.cos(p.a+Math.PI/2)*lx*sp;
+p.y += Math.sin(p.a+Math.PI/2)*lx*sp;
+
+p.x += Math.cos(p.a)*(-ly)*sp;
+p.y += Math.sin(p.a)*(-ly)*sp;
+
+}
+
+/* collision world */
+if(mode==="world"){
+if(tile(p.x,p.y)===1){
+p.x-=Math.cos(p.a)*sp;
+p.y-=Math.sin(p.a)*sp;
+}
+}
+
+/* enter building trigger */
+if(mode==="world"){
+for(let a of animals){
+if(Math.hypot(p.x-a.x,p.y-a.y)<1){
+if(keys["e"] || g?.buttons?.[0]?.pressed){
+enterBuilding();
+}
+}
+}
+}
+
+/* exit */
+if(mode==="interior"){
+if(keys["q"] || g?.buttons?.[1]?.pressed){
+exitBuilding();
+}
+}
+
+/* shoot */
+if((keys[" "] || g?.buttons?.[7]?.pressed) && inventory.ammo>0){
+inventory.ammo--;
+noise+=5;
+}
+
+}
+
+/* ================= AI ================= */
 
 function updateAnimals(){
 
@@ -131,12 +206,10 @@ let dx=p.x-a.x;
 let dy=p.y-a.y;
 let d=Math.hypot(dx,dy);
 
-/* wolves react to player + noise */
-if(a.t==="🐺"){
-if(noise>1){
+/* wolves react to noise */
+if(a.t==="🐺" && noise>1){
 a.vx += dx*0.002;
 a.vy += dy*0.002;
-}
 }
 
 /* deer flee wolves */
@@ -152,89 +225,35 @@ a.vy += (a.y-b.y)*0.003;
 }
 }
 
-/* rabbits random */
+/* rabbits chaos */
 if(a.t==="🐇"){
 a.vx += (Math.random()-0.5)*0.01;
 }
 
-/* move */
 a.x += a.vx;
 a.y += a.vy;
 
 a.vx*=0.9;
 a.vy*=0.9;
 
-if(a.x<1||a.x>SIZE-1)a.vx*=-1;
-if(a.y<1||a.y>SIZE-1)a.vy*=-1;
-
 }
 
 }
 
-/* ================= MOVE ================= */
+/* ================= RAYCAST ================= */
 
-function move(){
-
-let g=gp();
-if(!g) return;
-
-/* look */
-p.a += (g.axes?.[2]||0)*0.04;
-
-/* move */
-let lx=g.axes?.[0]||0;
-let ly=g.axes?.[1]||0;
-
-let sp=g.buttons?.[5]?.pressed?0.08:0.04;
-
-let nx=p.x+Math.cos(p.a)*(-ly)*sp;
-let ny=p.y+Math.sin(p.a)*(-ly)*sp;
-
-nx+=Math.cos(p.a+Math.PI/2)*lx*sp;
-ny+=Math.sin(p.a+Math.PI/2)*lx*sp;
-
-if(!inBuilding){
-if(tile(nx,p.y)===0)p.x=nx;
-if(tile(p.x,ny)===0)p.y=ny;
-}
-
-/* enter building */
-for(let b of buildings){
-if(Math.hypot(p.x-b.x,p.y-b.y)<1.5){
-if(g.buttons?.[0]?.pressed){
-enterBuilding();
-}
-}
-}
-
-/* exit */
-if(inBuilding && g.buttons?.[1]?.pressed){
-exitBuilding();
-}
-
-/* shoot */
-if(g.buttons?.[7]?.pressed && inventory.ammo>0){
-inventory.ammo--;
-noise+=5;
-}
-
-}
-
-/* ================= RENDER ================= */
-
-function draw(){
+function renderWorld(){
 
 ctx.fillStyle="#0b0f14";
 ctx.fillRect(0,0,c.width,c.height);
 
-/* raycast */
 for(let i=0;i<c.width;i+=6){
 
 let ra=p.a+(i-c.width/2)/180;
 
 let d=0;
 
-while(d<18){
+while(d<20){
 d+=0.1;
 
 let x=p.x+Math.cos(ra)*d;
@@ -244,35 +263,16 @@ if(tile(x,y)) break;
 
 }
 
-let shade=255-d*15;
+let shade=255-d*14;
 shade=Math.max(40,shade);
 
 ctx.fillStyle=`rgb(${shade},${shade},${shade})`;
 ctx.fillRect(i,c.height/2,6,c.height/2);
-}
-
-/* buildings */
-ctx.font="22px serif";
-
-for(let b of buildings){
-
-let dx=b.x-p.x;
-let dy=b.y-p.y;
-let d=Math.hypot(dx,dy);
-
-if(d>10) continue;
-
-let a=Math.atan2(dy,dx)-p.a;
-if(Math.abs(a)>0.7) continue;
-
-let x=(a/0.7)*(c.width/2)+c.width/2;
-
-ctx.fillText(b.t,x,c.height/2);
 
 }
 
 /* animals */
-ctx.font="18px serif";
+ctx.font="18px monospace";
 
 for(let a of animals){
 
@@ -293,6 +293,38 @@ ctx.fillText(a.t,x,c.height/2);
 
 }
 
+/* ================= INTERIOR ================= */
+
+function renderInterior(){
+
+ctx.fillStyle="#111";
+ctx.fillRect(0,0,c.width,c.height);
+
+ctx.fillStyle="white";
+ctx.font="20px monospace";
+
+ctx.fillText("INTERIOR MODE",50,50);
+ctx.fillText("Press Q to exit",50,80);
+
+/* loot */
+for(let l of interior.loot){
+
+let dx=l.x-p.x;
+let dy=l.y-p.y;
+
+if(Math.hypot(dx,dy)<2){
+
+inventory[l.t]++;
+l.t="collected";
+
+}
+
+ctx.fillText(l.t,l.x*20,l.y*20);
+
+}
+
+}
+
 /* ================= LOOP ================= */
 
 function loop(){
@@ -300,33 +332,26 @@ function loop(){
 move();
 updateAnimals();
 
-if(inBuilding){
-ctx.fillStyle="#111";
-ctx.fillRect(0,0,c.width,c.height);
-ctx.fillStyle="white";
-ctx.fillText("INTERIOR MODE",50,50);
-ctx.fillText("B = exit",50,80);
-}else{
-draw();
-}
+if(mode==="world") renderWorld();
+else renderInterior();
 
 noise*=0.96;
 
+/* UI */
+document.getElementById("ui").innerHTML=
+`
+MODE: ${mode}
+SCRAP: ${inventory.scrap}
+FOOD: ${inventory.food}
+AMMO: ${inventory.ammo}
+NOISE: ${noise.toFixed(1)}
+`;
+
 requestAnimationFrame(loop);
+
 }
 
 loop();
-
-/* ================= UI ================= */
-
-setInterval(()=>{
-document.getElementById("ui").innerHTML=
-`AMMO:${inventory.ammo}
-SCRAP:${inventory.scrap}
-FOOD:${inventory.food}
-NOISE:${noise.toFixed(1)}
-MODE:${inBuilding?"INSIDE":"OUTSIDE"}`;
-},200);
 
 </script>
 
