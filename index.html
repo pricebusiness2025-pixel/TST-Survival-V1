@@ -2,44 +2,32 @@
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Ruined City Immersion v5</title>
-
+<title>Ruined City Survival v1</title>
 <style>
-body{margin:0;overflow:hidden;background:#000;font-family:monospace}
-canvas{display:block}
+body{margin:0;overflow:hidden;background:black;}
+canvas{display:block;}
 
-#hud{
-position:absolute;top:10px;left:10px;
-color:#ddd;font-size:14px;
-text-shadow:0 0 5px #000;
-z-index:5
-}
-
-.bar{width:200px;height:10px;background:#111;border:1px solid #333}
-.fill{height:100%;background:lime}
-
-#hint{
-position:absolute;bottom:20px;left:50%;
-transform:translateX(-50%);
-background:rgba(0,0,0,0.6);
-padding:6px 10px;
-color:#fff;
-display:none;
+#title{
+position:absolute;
+inset:0;
+display:flex;
+flex-direction:column;
+justify-content:center;
+align-items:center;
+background:black;
+color:white;
+font-family:monospace;
+z-index:10;
 }
 </style>
 </head>
 
 <body>
 
-<div id="hud">
-Survival
-<div class="bar"><div id="survival" class="fill"></div></div>
-Ammo: <span id="ammo">6</span> |
-Scrap: <span id="scrap">0</span>
+<div id="title">
+<h1>RUINED CITY</h1>
+<p>Press A to Start</p>
 </div>
-
-<div id="hint"></div>
 
 <canvas id="c"></canvas>
 
@@ -49,308 +37,249 @@ const ctx=c.getContext("2d");
 c.width=innerWidth;
 c.height=innerHeight;
 
+const SIZE=40;
+
+let world=[];
+let buildings=[];
+let props=[];
+let loot=[];
+let inventory=[];
+
+let started=false;
+let mode="game";
+
+let p={x:10,y:10,a:0};
+
 /* ---------------- WORLD ---------------- */
-const SIZE=24;
-let world=[],zone=[];
 
 function gen(){
 for(let y=0;y<SIZE;y++){
 world[y]=[];
-zone[y]=[];
 for(let x=0;x<SIZE;x++){
-
-let road=(x%6===0||y%6===0);
-
-if(road){
-world[y][x]=0;
-zone[y][x]="road";
-}else{
-let r=Math.random();
-if(r<0.6){world[y][x]=1;zone[y][x]="building";}
-else if(r<0.85){world[y][x]=2;zone[y][x]="ruin";}
-else{world[y][x]=3;zone[y][x]="debris";}
+world[y][x]=(x%7===0||y%7===0)?0:1;
 }
 }
 }
-}
-gen();
 
-/* ---------------- PLAYER ---------------- */
-let p={x:3,y:3,a:0,s:100};
-
-/* ---------------- REVOLVER ---------------- */
-let ammo=6;
-let cooldown=0;
-
-/* ---------------- LOOT ---------------- */
-let loot=[];
-
-/* ---------------- WILDLIFE ---------------- */
-let wildlife=[];
-
-/* ---------------- LAMPS ---------------- */
-let lamps=[];
-for(let i=0;i<14;i++){
-lamps.push({x:Math.random()*SIZE,y:Math.random()*SIZE});
-}
-
-/* ---------------- SPAWN SYSTEMS ---------------- */
-setInterval(()=>{
-let types=["🐇","🦌"];
-wildlife.push({
+function genBuildings(){
+let t=["🏚️","🏢","🏭","🏪","🚓"];
+for(let i=0;i<40;i++){
+buildings.push({
 x:Math.random()*SIZE,
 y:Math.random()*SIZE,
-type:Math.random()<0.7?"🐇":"🦌",
-dir:Math.random()*Math.PI*2,
-alive:true
+t:t[Math.random()*t.length|0]
 });
-},4000);
-
-setInterval(()=>{
-let x=Math.random()*SIZE|0;
-let y=Math.random()*SIZE|0;
-loot.push({x,y,t:"scrap",d:false});
-},3500);
-
-/* ---------------- WALL CHECK ---------------- */
-function wall(x,y){
-let gx=x|0,gy=y|0;
-if(gx<0||gy<0||gx>=SIZE||gy>=SIZE)return true;
-return world[gy][gx]===1 || world[gy][gx]===3;
+}
 }
 
-/* ---------------- INPUT ---------------- */
-let gp;
-
-/* ---------------- CAST ---------------- */
-function cast(a){
-let d=0;
-while(d<20){
-let x=p.x+Math.cos(a)*d;
-let y=p.y+Math.sin(a)*d;
-if(wall(x,y))return d;
-d+=0.03;
+function genProps(){
+let t=["🌲","⚙️","🪧","🗑"];
+for(let i=0;i<60;i++){
+props.push({
+x:Math.random()*SIZE,
+y:Math.random()*SIZE,
+t:t[Math.random()*t.length|0]
+});
 }
-return 20;
 }
 
-/* ---------------- MOVEMENT ---------------- */
+gen();
+genBuildings();
+genProps();
+
+/* ---------------- SAFE GAMEPAD ---------------- */
+
+function gp(){
+return navigator.getGamepads?.()[0] || null;
+}
+
+/* ---------------- TILE ---------------- */
+
+function tile(x,y){
+x|=0;y|=0;
+if(x<0||y<0||x>=SIZE||y>=SIZE) return 1;
+return world[y][x];
+}
+
+/* ---------------- BUILDING ---------------- */
+
+let near=null;
+
+function enter(b){
+let pool=[];
+
+if(b.t==="🏚️") pool=["scrap","food"];
+if(b.t==="🏢") pool=["scrap","ammo"];
+if(b.t==="🏭") pool=["ammo","ammo","scrap"];
+if(b.t==="🏪") pool=["food","food"];
+if(b.t==="🚓") pool=["ammo","ammo","ammo"];
+
+pool.forEach(i=>loot.push({t:i}));
+
+b.visited=true;
+}
+
+/* ---------------- DRAW SKY ---------------- */
+
+function sky(){
+let g=ctx.createLinearGradient(0,0,0,c.height/2);
+g.addColorStop(0,"#2a3a4a");
+g.addColorStop(1,"#1a1a1a");
+ctx.fillStyle=g;
+ctx.fillRect(0,0,c.width,c.height/2);
+
+ctx.fillStyle="#0b0b0b";
+ctx.fillRect(0,c.height/2,c.width,c.height/2);
+}
+
+/* ---------------- MOVE ---------------- */
+
 function move(){
-gp=navigator.getGamepads()[0];
-if(!gp)return;
 
-p.a+=gp.axes[0]*0.04;
+let g=gp();
 
-let f=-gp.axes[1];
-let sp=gp.buttons[5]?.pressed?0.09:0.05;
-
-let nx=p.x+Math.cos(p.a)*f*sp;
-let ny=p.y+Math.sin(p.a)*f*sp;
-
-if(!wall(nx,p.y))p.x=nx;
-if(!wall(p.x,ny))p.y=ny;
-
-/* SHOOT */
-if(gp.buttons[0]?.pressed && cooldown<=0 && ammo>0){
-shoot();
-ammo--;
-cooldown=20;
-}
+/* start */
+if(!started && g?.buttons[0]?.pressed){
+started=true;
+document.getElementById("title").style.display="none";
 }
 
-/* ---------------- SHOOT ---------------- */
-function shoot(){
+/* menus */
+if(!started) return;
 
-wildlife.forEach(w=>{
-if(!w.alive)return;
+if(g?.buttons[12]?.pressed) mode="inv";
+if(g?.buttons[13]?.pressed) mode="craft";
+if(g?.buttons[1]?.pressed) mode="game";
 
-let dx=w.x-p.x;
-let dy=w.y-p.y;
-let d=Math.hypot(dx,dy);
+/* pause gameplay in menus */
+if(mode!=="game") return;
 
-if(d<0.6){
-w.alive=false;
-loot.push({x:w.x,y:w.y,t:"meat",d:false});
-}
+/* input */
+let lx=g?.axes?.[0]||0;
+let ly=g?.axes?.[1]||0;
+let rx=g?.axes?.[2]||0;
+
+/* camera */
+p.a+=rx*0.05;
+
+/* movement */
+let sp=g?.buttons[5]?.pressed?0.08:0.04;
+
+let nx=p.x+Math.cos(p.a)*(-ly)*sp;
+let ny=p.y+Math.sin(p.a)*(-ly)*sp;
+
+nx+=Math.cos(p.a+Math.PI/2)*lx*sp;
+ny+=Math.sin(p.a+Math.PI/2)*lx*sp;
+
+if(tile(nx,p.y)===0)p.x=nx;
+if(tile(p.x,ny)===0)p.y=ny;
+
+/* building detect */
+near=null;
+buildings.forEach(b=>{
+if(Math.hypot(p.x-b.x,p.y-b.y)<1.5) near=b;
 });
 
+/* enter */
+if(g?.buttons[0]?.pressed && near){
+enter(near);
 }
 
-/* ---------------- UPDATE WILDLIFE ---------------- */
-function updateWildlife(){
-wildlife.forEach(w=>{
-if(!w.alive)return;
-
-let dx=p.x-w.x;
-let dy=p.y-w.y;
-let d=Math.hypot(dx,dy);
-
-if(w.type==="🐇" && d<5){
-w.x+=dx*0.01;
-w.y+=dy*0.01;
-return;
+/* shoot */
+if(g?.buttons[7]?.pressed && loot.length>=0){
+ctx.fillText("🔫 pew",50,50);
 }
 
-if(w.type==="🦌" && d<6){
-w.x+=dx*0.005;
-w.y+=dy*0.005;
-return;
-}
-
-w.dir+=(Math.random()-0.5)*0.1;
-w.x+=Math.cos(w.dir)*0.01;
-w.y+=Math.sin(w.dir)*0.01;
-});
-}
-
-/* ---------------- LOOT PICKUP ---------------- */
-let nearby=null;
-
-function lootUpdate(){
-nearby=null;
-
-loot.forEach(l=>{
-if(l.d)return;
-
-let d=Math.hypot(p.x-l.x,p.y-l.y);
-if(d<1.5)nearby=l;
-});
 }
 
 /* ---------------- DRAW ---------------- */
+
 function draw(){
 
-ctx.fillStyle="#000";
-ctx.fillRect(0,0,c.width,c.height);
+sky();
 
-/* WALLS */
-for(let i=0;i<140;i++){
-let a=p.a-0.6+(i/140)*1.2;
-let d=cast(a);
-d*=Math.cos(a-p.a);
+/* walls */
+for(let i=0;i<c.width;i+=6){
 
-let h=c.height/d;
+let ra=p.a+(i-c.width/2)/180;
 
-let hitX=p.x+Math.cos(a)*d;
-let hitY=p.y+Math.sin(a)*d;
+let d=0;
+let hit=0;
 
-let shade=255-d*16;
-shade=Math.max(30,shade);
+while(d<20){
+d+=0.1;
 
-let pattern=(hitX*3+hitY*5)%3;
-if(pattern<1)shade*=0.95;
-else if(pattern<2)shade*=0.9;
+let x=p.x+Math.cos(ra)*d;
+let y=p.y+Math.sin(ra)*d;
 
-let tile=world[hitY|0]?.[hitX|0]||1;
-
-if(tile===1)ctx.fillStyle=`rgb(${shade},${shade*0.85},${shade*0.8})`;
-else if(tile===2)ctx.fillStyle=`rgb(${shade*0.7},${shade*0.6},${shade*0.55})`;
-else ctx.fillStyle=`rgb(${shade*0.4},${shade*0.4},${shade*0.4})`;
-
-ctx.fillRect(i*(c.width/140),c.height/2-h/2,c.width/140+1,h);
+if(tile(x,y)){
+hit=1;
+break;
+}
 }
 
-/* LAMPS */
-lamps.forEach(l=>{
-let dx=l.x-p.x,dy=l.y-p.y;
+let shade=255-d*14;
+shade=Math.max(60,shade);
+
+ctx.fillStyle=`rgb(${shade},${shade*0.9},${shade*0.85})`;
+ctx.fillRect(i,c.height/2,6,c.height/2);
+}
+
+/* buildings */
+ctx.font="30px serif";
+buildings.forEach(b=>{
+let dx=b.x-p.x;
+let dy=b.y-p.y;
 let d=Math.hypot(dx,dy);
+
 if(d>10)return;
 
 let a=Math.atan2(dy,dx)-p.a;
-if(Math.abs(a)>0.8)return;
+if(Math.abs(a)>0.7)return;
 
-let x=(a/0.8)*(c.width/2)+c.width/2;
+let x=(a/0.7)*(c.width/2)+c.width/2;
 
-ctx.fillStyle=`rgba(255,220,140,${0.2*(1-d/10)})`;
-ctx.beginPath();
-ctx.arc(x,c.height/2,200/d,0,Math.PI*2);
-ctx.fill();
+ctx.fillText(b.t,x,c.height/2);
 });
 
-/* LOOT */
-loot.forEach(l=>{
-if(l.d)return;
-
-let dx=l.x-p.x,dy=l.y-p.y;
+/* props */
+ctx.font="20px serif";
+props.forEach(p2=>{
+let dx=p2.x-p.x;
+let dy=p2.y-p.y;
 let d=Math.hypot(dx,dy);
+
 if(d>8)return;
 
 let a=Math.atan2(dy,dx)-p.a;
 if(Math.abs(a)>0.7)return;
 
 let x=(a/0.7)*(c.width/2)+c.width/2;
-let size=180/d;
 
-ctx.fillStyle="rgba(200,200,255,0.15)";
-ctx.beginPath();
-ctx.arc(x,c.height/2,size,0,Math.PI*2);
-ctx.fill();
-
-ctx.fillStyle="#ddd";
-ctx.fillRect(x-size/4,c.height/2-size/4,size/2,size/2);
+ctx.fillText(p2.t,x,c.height/2);
 });
 
-/* WILDLIFE */
-wildlife.forEach(w=>{
-if(!w.alive)return;
-
-let dx=w.x-p.x,dy=w.y-p.y;
-let d=Math.hypot(dx,dy);
-if(d>10)return;
-
-let a=Math.atan2(dy,dx)-p.a;
-if(Math.abs(a)>0.7)return;
-
-let x=(a/0.7)*(c.width/2)+c.width/2;
-
-let scale=240/d;
-
-ctx.fillStyle="rgba(0,0,0,0.4)";
-ctx.fillText(w.type,x+2,c.height/2+2);
-
-ctx.font=`${scale}px serif`;
-ctx.fillStyle="rgba(255,255,255,0.9)";
-ctx.fillText(w.type,x,c.height/2);
-});
-
-/* FOG */
-let g=ctx.createRadialGradient(
-c.width/2,c.height/2,20,
-c.width/2,c.height/2,420
-);
-
-g.addColorStop(0,"rgba(255,220,160,0.10)");
-g.addColorStop(0.5,"rgba(40,30,20,0.25)");
-g.addColorStop(1,"rgba(0,0,0,0.98)");
-
-ctx.fillStyle=g;
-ctx.fillRect(0,0,c.width,c.height);
-
-/* HUD */
-document.getElementById("ammo").innerText=ammo;
-
-/* HINT */
-let hint=document.getElementById("hint");
-if(nearby){
-hint.style.display="block";
-hint.innerText="[A] Pick up "+nearby.t;
-}else hint.style.display="none";
 }
 
 /* ---------------- LOOP ---------------- */
+
 function loop(){
 move();
-updateWildlife();
-lootUpdate();
 
-if(cooldown>0)cooldown--;
-
+if(mode==="game"){
 draw();
+}else{
+ctx.fillStyle="black";
+ctx.fillRect(0,0,c.width,c.height);
+ctx.fillStyle="white";
+ctx.fillText(mode.toUpperCase(),50,50);
+}
+
 requestAnimationFrame(loop);
 }
 
 loop();
-</script>
 
+</script>
 </body>
 </html>
