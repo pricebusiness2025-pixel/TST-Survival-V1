@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Survival City v2 Clean Base</title>
+<title>Survival City v3 - Full Working Model</title>
 <style>
 body{margin:0;overflow:hidden;background:black;}
 canvas{display:block;}
@@ -30,30 +30,30 @@ c.height=innerHeight;
 
 const SIZE=40;
 
-/* ================= STATE ================= */
+/* ================= WORLD ================= */
 
 let world=[];
 let buildings=[];
 let animals=[];
-let interior=null;
+
 let inBuilding=false;
 
 let p={x:10,y:10,a:0};
 
-let inventory={scrap:0,food:0,ammo:0};
-let hasGun=false;
-let health=100;
+let inventory={scrap:0,food:0,ammo:3};
+let hasGun=true;
+
 let noise=0;
 
-/* ================= WORLD GEN ================= */
+/* ================= GENERATION ================= */
 
 function genWorld(){
 for(let y=0;y<SIZE;y++){
 world[y]=[];
 for(let x=0;x<SIZE;x++){
 
-if(x%7===0||y%7===0){
-world[y][x]=0; // street
+if(x%6===0||y%6===0){
+world[y][x]=0; // streets
 }else{
 world[y][x]=Math.random()<0.8?1:0;
 }
@@ -65,7 +65,7 @@ world[y][x]=Math.random()<0.8?1:0;
 function genBuildings(){
 const t=["🏚️","🏢","🏭","🚓"];
 
-for(let i=0;i<30;i++){
+for(let i=0;i<35;i++){
 buildings.push({
 x:Math.random()*SIZE,
 y:Math.random()*SIZE,
@@ -104,43 +104,21 @@ if(x<0||y<0||x>=SIZE||y>=SIZE) return 1;
 return world[y][x];
 }
 
-/* ================= BUILDING ENTER ================= */
+/* ================= BUILDING ================= */
 
-function enterBuilding(b){
-
+function enterBuilding(){
 inBuilding=true;
-
-let pool=[];
-
-if(b.t==="🏚️") pool=["scrap","food"];
-if(b.t==="🏢") pool=["scrap","ammo"];
-if(b.t==="🏭") pool=["ammo","ammo","scrap"];
-if(b.t==="🚓") pool=["ammo","ammo","ammo"];
-
-pool.forEach(i=>{
-inventory[i]++;
-});
-
-noise+=2;
-
-/* interior mock */
-interior={
-items:[
-{t:"scrap",x:2,y:2},
-{t:"ammo",x:6,y:6},
-{t:"food",x:4,y:7}
-]
-};
-
 p.x=5;p.y=5;
+noise+=2;
+inventory.scrap++;
+inventory.food++;
+inventory.ammo++;
 }
-
-/* ================= EXIT ================= */
 
 function exitBuilding(){
 inBuilding=false;
-interior=null;
-p.x+=2;p.y+=2;
+p.x+=2;
+p.y+=2;
 }
 
 /* ================= ANIMALS ================= */
@@ -151,20 +129,22 @@ for(let a of animals){
 
 let dx=p.x-a.x;
 let dy=p.y-a.y;
-let dist=Math.hypot(dx,dy);
+let d=Math.hypot(dx,dy);
 
-/* wolves react to noise */
-if(a.t==="🐺" && noise>1){
+/* wolves react to player + noise */
+if(a.t==="🐺"){
+if(noise>1){
 a.vx += dx*0.002;
 a.vy += dy*0.002;
 }
+}
 
-/* deer flee wolves/player */
+/* deer flee wolves */
 if(a.t==="🦌"){
 for(let b of animals){
 if(b.t==="🐺"){
-let d=Math.hypot(a.x-b.x,a.y-b.y);
-if(d<4){
+let dd=Math.hypot(a.x-b.x,a.y-b.y);
+if(dd<4){
 a.vx += (a.x-b.x)*0.003;
 a.vy += (a.y-b.y)*0.003;
 }
@@ -172,7 +152,7 @@ a.vy += (a.y-b.y)*0.003;
 }
 }
 
-/* rabbits chaos */
+/* rabbits random */
 if(a.t==="🐇"){
 a.vx += (Math.random()-0.5)*0.01;
 }
@@ -191,17 +171,17 @@ if(a.y<1||a.y>SIZE-1)a.vy*=-1;
 
 }
 
-/* ================= MOVEMENT ================= */
+/* ================= MOVE ================= */
 
 function move(){
 
 let g=gp();
 if(!g) return;
 
-/* start rotation */
+/* look */
 p.a += (g.axes?.[2]||0)*0.04;
 
-/* movement */
+/* move */
 let lx=g.axes?.[0]||0;
 let ly=g.axes?.[1]||0;
 
@@ -218,19 +198,16 @@ if(tile(nx,p.y)===0)p.x=nx;
 if(tile(p.x,ny)===0)p.y=ny;
 }
 
-/* detect building */
-if(!inBuilding){
+/* enter building */
 for(let b of buildings){
 if(Math.hypot(p.x-b.x,p.y-b.y)<1.5){
-
 if(g.buttons?.[0]?.pressed){
-enterBuilding(b);
-}
+enterBuilding();
 }
 }
 }
 
-/* exit building */
+/* exit */
 if(inBuilding && g.buttons?.[1]?.pressed){
 exitBuilding();
 }
@@ -239,7 +216,6 @@ exitBuilding();
 if(g.buttons?.[7]?.pressed && inventory.ammo>0){
 inventory.ammo--;
 noise+=5;
-hasGun=true;
 }
 
 }
@@ -268,7 +244,7 @@ if(tile(x,y)) break;
 
 }
 
-let shade=255-d*14;
+let shade=255-d*15;
 shade=Math.max(40,shade);
 
 ctx.fillStyle=`rgb(${shade},${shade},${shade})`;
@@ -276,7 +252,8 @@ ctx.fillRect(i,c.height/2,6,c.height/2);
 }
 
 /* buildings */
-ctx.font="24px serif";
+ctx.font="22px serif";
+
 for(let b of buildings){
 
 let dx=b.x-p.x;
@@ -295,7 +272,8 @@ ctx.fillText(b.t,x,c.height/2);
 }
 
 /* animals */
-ctx.font="20px serif";
+ctx.font="18px serif";
+
 for(let a of animals){
 
 let dx=a.x-p.x;
@@ -322,13 +300,14 @@ function loop(){
 move();
 updateAnimals();
 
-if(!inBuilding) draw();
-else{
+if(inBuilding){
 ctx.fillStyle="#111";
 ctx.fillRect(0,0,c.width,c.height);
 ctx.fillStyle="white";
-ctx.fillText("INTERIOR",50,50);
-ctx.fillText("Press B to exit",50,80);
+ctx.fillText("INTERIOR MODE",50,50);
+ctx.fillText("B = exit",50,80);
+}else{
+draw();
 }
 
 noise*=0.96;
@@ -338,15 +317,15 @@ requestAnimationFrame(loop);
 
 loop();
 
-/* UI */
+/* ================= UI ================= */
+
 setInterval(()=>{
 document.getElementById("ui").innerHTML=
-`HP:${health}
+`AMMO:${inventory.ammo}
 SCRAP:${inventory.scrap}
 FOOD:${inventory.food}
-AMMO:${inventory.ammo}
 NOISE:${noise.toFixed(1)}
-${hasGun?"GUN":"NO GUN"}`;
+MODE:${inBuilding?"INSIDE":"OUTSIDE"}`;
 },200);
 
 </script>
