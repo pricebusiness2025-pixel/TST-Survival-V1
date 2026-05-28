@@ -2,16 +2,19 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Controller FPS Core</title>
+<title>Ruined City Render Pass</title>
+
 <style>
 body{
 margin:0;
 overflow:hidden;
 background:black;
 }
+
 canvas{
 display:block;
 }
+
 #ui{
 position:absolute;
 top:10px;
@@ -19,6 +22,8 @@ left:10px;
 color:white;
 font-family:monospace;
 font-size:14px;
+background:rgba(0,0,0,0.4);
+padding:8px;
 }
 </style>
 </head>
@@ -36,13 +41,12 @@ const ctx=canvas.getContext("2d");
 canvas.width=window.innerWidth;
 canvas.height=window.innerHeight;
 
-const MAP=40;
-
-let world=[];
-
 /* =========================
    WORLD
 ========================= */
+
+const MAP=50;
+let world=[];
 
 function generateWorld(){
 
@@ -52,6 +56,7 @@ world[y]=[];
 
 for(let x=0;x<MAP;x++){
 
+/* border */
 if(
 x===0||
 y===0||
@@ -61,11 +66,16 @@ y===MAP-1
 world[y][x]=1;
 }
 
-/* structured streets */
+/* city streets */
 else if(
-x%6===0||
-y%6===0
+x%7===0||
+y%7===0
 ){
+world[y][x]=0;
+}
+
+/* buildings */
+else if(Math.random()<0.82){
 world[y][x]=1;
 }
 
@@ -77,7 +87,7 @@ world[y][x]=0;
 
 }
 
-/* guaranteed spawn */
+/* spawn safe zone */
 for(let y=8;y<14;y++){
 for(let x=8;x<14;x++){
 world[y][x]=0;
@@ -99,7 +109,7 @@ a:0
 };
 
 /* =========================
-   CONTROLLER
+   GAMEPAD
 ========================= */
 
 function getPad(){
@@ -112,11 +122,9 @@ return pads[0];
 
 }
 
-function dead(v){
+function dz(v){
 
-if(Math.abs(v)<0.15) return 0;
-
-return v;
+return Math.abs(v)<0.15 ? 0 : v;
 
 }
 
@@ -152,37 +160,35 @@ const pad=getPad();
 
 if(!pad) return;
 
-/* LEFT STICK = MOVEMENT */
-const lx=dead(pad.axes[0]);
-const ly=dead(pad.axes[1]);
+/* sticks */
+const lx=dz(pad.axes[0]);
+const ly=dz(pad.axes[1]);
+const rx=dz(pad.axes[2]);
 
-/* RIGHT STICK = CAMERA */
-const rx=dead(pad.axes[2]);
+/* smoother rotation */
+player.a += rx*0.04;
 
 /* sprint */
-let speed=
+const speed=
 pad.buttons[5].pressed
-?0.10
-:0.06;
-
-/* camera */
-player.a += rx*0.05;
+?0.11
+:0.07;
 
 /* movement */
-let moveX=0;
-let moveY=0;
+let mx=0;
+let my=0;
 
 /* forward/back */
-moveX += Math.cos(player.a)*(-ly)*speed;
-moveY += Math.sin(player.a)*(-ly)*speed;
+mx += Math.cos(player.a)*(-ly)*speed;
+my += Math.sin(player.a)*(-ly)*speed;
 
 /* strafe */
-moveX += Math.cos(player.a+Math.PI/2)*lx*speed;
-moveY += Math.sin(player.a+Math.PI/2)*lx*speed;
+mx += Math.cos(player.a+Math.PI/2)*lx*speed;
+my += Math.sin(player.a+Math.PI/2)*lx*speed;
 
 /* collision */
-let nx=player.x+moveX;
-let ny=player.y+moveY;
+let nx=player.x+mx;
+let ny=player.y+my;
 
 if(!wall(nx,player.y)){
 player.x=nx;
@@ -200,8 +206,16 @@ player.y=ny;
 
 function render(){
 
-/* sky */
-ctx.fillStyle="#6fa8ff";
+/* sky gradient */
+let sky=
+ctx.createLinearGradient(
+0,0,0,canvas.height/2
+);
+
+sky.addColorStop(0,"#29384d");
+sky.addColorStop(1,"#4f6b8a");
+
+ctx.fillStyle=sky;
 ctx.fillRect(
 0,
 0,
@@ -210,7 +224,18 @@ canvas.height/2
 );
 
 /* ground */
-ctx.fillStyle="#555";
+let floor=
+ctx.createLinearGradient(
+0,
+canvas.height/2,
+0,
+canvas.height
+);
+
+floor.addColorStop(0,"#3f3f3f");
+floor.addColorStop(1,"#1e1e1e");
+
+ctx.fillStyle=floor;
 ctx.fillRect(
 0,
 canvas.height/2,
@@ -218,30 +243,42 @@ canvas.width,
 canvas.height/2
 );
 
-/* field of view */
+/* fog overlay */
+ctx.fillStyle="rgba(0,0,0,0.12)";
+ctx.fillRect(
+0,
+0,
+canvas.width,
+canvas.height
+);
+
+/* FOV */
 const FOV=Math.PI/3;
 
-/* raycasting */
-for(let x=0;x<canvas.width;x+=2){
+/* PERFORMANCE:
+   larger ray columns */
+for(let x=0;x<canvas.width;x+=4){
 
-let rayAngle=
+let ray=
 (player.a-FOV/2)+
 (x/canvas.width)*FOV;
 
 let dist=0;
 let hit=false;
 
+/* PERFORMANCE:
+   bigger ray step */
 while(!hit && dist<20){
 
-dist+=0.03;
+dist+=0.04;
 
 let rx=
 player.x+
-Math.cos(rayAngle)*dist;
+Math.cos(ray)*dist;
 
 let ry=
 player.y+
-Math.sin(rayAngle)*dist;
+Math.sin(ray)*dist;
 
 if(wall(rx,ry)){
 hit=true;
@@ -249,32 +286,59 @@ hit=true;
 
 }
 
-/* fisheye fix */
+/* fisheye correction */
 let corrected=
-dist*Math.cos(rayAngle-player.a);
+dist*Math.cos(ray-player.a);
 
-/* wall size */
+/* wall height */
 let h=
 canvas.height/
-(corrected+0.1);
+(corrected+0.15);
 
-/* shading */
+/* ruined wall texture illusion */
 let shade=
-255-corrected*10;
+190-corrected*8;
 
-if(shade<50){
-shade=50;
+if(shade<35){
+shade=35;
 }
 
+/* texture variation */
+let tex=
+Math.sin(corrected*8)*15;
+
+/* final wall color */
+let r=shade+tex;
+let g=shade+tex;
+let b=shade+tex;
+
+/* subtle blue tint */
+b+=10;
+
 ctx.fillStyle=
-`rgb(${shade},${shade},${shade})`;
+`rgb(${r},${g},${b})`;
 
 ctx.fillRect(
 x,
 (canvas.height/2)-(h/2),
-2,
+4,
 h
 );
+
+/* fake cracks */
+if(h>120){
+
+ctx.fillStyle=
+"rgba(0,0,0,0.18)";
+
+ctx.fillRect(
+x+1,
+(canvas.height/2)-(h/2),
+1,
+h
+);
+
+}
 
 }
 
