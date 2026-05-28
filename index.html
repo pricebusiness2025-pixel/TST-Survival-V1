@@ -2,10 +2,16 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Fixed Survival Core</title>
+<title>Playable Doom City Core</title>
 <style>
-body{margin:0;overflow:hidden;background:#000;}
-canvas{display:block;}
+body{
+margin:0;
+overflow:hidden;
+background:black;
+}
+canvas{
+display:block;
+}
 #ui{
 position:absolute;
 top:10px;
@@ -18,166 +24,278 @@ font-size:14px;
 </head>
 
 <body>
-<canvas id="c"></canvas>
+
+<canvas id="game"></canvas>
 <div id="ui"></div>
 
 <script>
-const c=document.getElementById("c");
-const ctx=c.getContext("2d");
-c.width=innerWidth;
-c.height=innerHeight;
 
-/* ================= WORLD ================= */
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
 
-const SIZE=60;
-let map=[];
+canvas.width=window.innerWidth;
+canvas.height=window.innerHeight;
 
-/* build solid readable structure */
-function genMap(){
-for(let y=0;y<SIZE;y++){
-map[y]=[];
-for(let x=0;x<SIZE;x++){
+const MAP=40;
+const TILE=1;
 
-// strong structure: not random chaos
-if(x===0||y===0||x===SIZE-1||y===SIZE-1){
-map[y][x]=1;
+let world=[];
+
+/* =========================
+   MAP GENERATION
+========================= */
+
+function generateWorld(){
+
+for(let y=0;y<MAP;y++){
+
+world[y]=[];
+
+for(let x=0;x<MAP;x++){
+
+/* outer walls */
+if(
+x===0||
+y===0||
+x===MAP-1||
+y===MAP-1
+){
+world[y][x]=1;
 }
-else if(x%8===0 || y%8===0){
-map[y][x]=1; // streets / walls
+
+/* city blocks */
+else if(
+x%6===0||
+y%6===0
+){
+world[y][x]=1;
 }
-else if(Math.random()<0.12){
-map[y][x]=1; // buildings
-}
+
+/* open space */
 else{
-map[y][x]=0; // empty space
+world[y][x]=0;
 }
 
 }
+
+}
+
+/* guaranteed spawn area */
+for(let y=8;y<14;y++){
+for(let x=8;x<14;x++){
+world[y][x]=0;
 }
 }
-genMap();
 
-/* ================= PLAYER ================= */
+}
 
-let p={
+generateWorld();
+
+/* =========================
+   PLAYER
+========================= */
+
+let player={
 x:10,
 y:10,
 a:0
 };
 
-/* ================= INPUT ================= */
+/* =========================
+   INPUT
+========================= */
 
 let keys={};
 
-window.addEventListener("keydown",e=>keys[e.key]=true);
-window.addEventListener("keyup",e=>keys[e.key]=false);
+window.addEventListener("keydown",e=>{
+keys[e.key.toLowerCase()]=true;
+});
 
-/* ================= TILE ================= */
+window.addEventListener("keyup",e=>{
+keys[e.key.toLowerCase()]=false;
+});
 
-function tile(x,y){
-x|=0;y|=0;
-if(x<0||y<0||x>=SIZE||y>=SIZE) return 1;
-return map[y][x];
+/* =========================
+   COLLISION
+========================= */
+
+function wall(x,y){
+
+x=Math.floor(x);
+y=Math.floor(y);
+
+if(x<0||y<0||x>=MAP||y>=MAP){
+return 1;
 }
 
-/* ================= MOVEMENT (FIXED FEEL) ================= */
+return world[y][x];
 
-function move(){
-
-let speed=0.06;
-
-/* rotation */
-if(keys["ArrowLeft"]) p.a-=0.05;
-if(keys["ArrowRight"]) p.a+=0.05;
-
-/* forward/back */
-let nx=p.x;
-let ny=p.y;
-
-if(keys["ArrowUp"]){
-nx+=Math.cos(p.a)*speed;
-ny+=Math.sin(p.a)*speed;
 }
 
-if(keys["ArrowDown"]){
-nx-=Math.cos(p.a)*speed;
-ny-=Math.sin(p.a)*speed;
+/* =========================
+   MOVEMENT
+========================= */
+
+function update(){
+
+let moveSpeed=0.06;
+let rotSpeed=0.04;
+
+/* rotate */
+if(keys["arrowleft"]){
+player.a-=rotSpeed;
 }
 
-/* strafe */
+if(keys["arrowright"]){
+player.a+=rotSpeed;
+}
+
+/* movement */
+let mx=0;
+let my=0;
+
+/* forward */
+if(keys["w"]||keys["arrowup"]){
+mx+=Math.cos(player.a)*moveSpeed;
+my+=Math.sin(player.a)*moveSpeed;
+}
+
+/* backward */
+if(keys["s"]||keys["arrowdown"]){
+mx-=Math.cos(player.a)*moveSpeed;
+my-=Math.sin(player.a)*moveSpeed;
+}
+
+/* strafe left */
 if(keys["a"]){
-nx+=Math.cos(p.a+Math.PI/2)*speed;
-ny+=Math.sin(p.a+Math.PI/2)*speed;
+mx+=Math.cos(player.a-Math.PI/2)*moveSpeed;
+my+=Math.sin(player.a-Math.PI/2)*moveSpeed;
 }
 
+/* strafe right */
 if(keys["d"]){
-nx+=Math.cos(p.a-Math.PI/2)*speed;
-ny+=Math.sin(p.a-Math.PI/2)*speed;
+mx+=Math.cos(player.a+Math.PI/2)*moveSpeed;
+my+=Math.sin(player.a+Math.PI/2)*moveSpeed;
 }
 
 /* collision */
-if(tile(nx,p.y)===0) p.x=nx;
-if(tile(p.x,ny)===0) p.y=ny;
+let nx=player.x+mx;
+let ny=player.y+my;
+
+if(!wall(nx,player.y)){
+player.x=nx;
+}
+
+if(!wall(player.x,ny)){
+player.y=ny;
+}
 
 }
 
-/* ================= RAYCAST ================= */
+/* =========================
+   RENDER
+========================= */
 
 function render(){
 
-/* FIX: proper sky + floor (no black/white split bug) */
-ctx.fillStyle="#87b5ff";
-ctx.fillRect(0,0,c.width,c.height/2);
+/* sky */
+ctx.fillStyle="#5a88c9";
+ctx.fillRect(0,0,canvas.width,canvas.height/2);
 
-ctx.fillStyle="#2a2a2a";
-ctx.fillRect(0,c.height/2,c.width,c.height/2);
+/* ground */
+ctx.fillStyle="#4b4b4b";
+ctx.fillRect(
+0,
+canvas.height/2,
+canvas.width,
+canvas.height/2
+);
 
-/* walls */
-for(let x=0;x<c.width;x+=4){
+/* field of view */
+const FOV=Math.PI/3;
 
-let rayAngle=p.a + (x-c.width/2)/180;
+/* raycasting */
+for(let x=0;x<canvas.width;x+=2){
+
+let rayAngle=
+(player.a-FOV/2)+
+(x/canvas.width)*FOV;
 
 let dist=0;
 let hit=false;
 
 while(!hit && dist<20){
-dist+=0.05;
 
-let tx=p.x + Math.cos(rayAngle)*dist;
-let ty=p.y + Math.sin(rayAngle)*dist;
+dist+=0.02;
 
-if(tile(tx,ty)){
+let rx=
+player.x+
+Math.cos(rayAngle)*dist;
+
+let ry=
+player.y+
+Math.sin(rayAngle)*dist;
+
+if(wall(rx,ry)){
 hit=true;
 }
-}
-
-let shade=255 - dist*18;
-shade=Math.max(40,shade);
-
-let height=c.height/(dist+0.1);
-
-ctx.fillStyle=`rgb(${shade},${shade},${shade})`;
-ctx.fillRect(x,(c.height/2)-height/2,4,height);
 
 }
 
+/* fisheye correction */
+let corrected=
+dist*Math.cos(rayAngle-player.a);
+
+/* wall height */
+let h=
+canvas.height/
+(corrected+0.1);
+
+/* shading */
+let shade=
+255-corrected*12;
+
+if(shade<40){
+shade=40;
 }
 
-/* ================= LOOP ================= */
+ctx.fillStyle=
+`rgb(${shade},${shade},${shade})`;
+
+ctx.fillRect(
+x,
+(canvas.height/2)-(h/2),
+2,
+h
+);
+
+}
+
+}
+
+/* =========================
+   LOOP
+========================= */
 
 function loop(){
-move();
+
+update();
 render();
 
 document.getElementById("ui").innerHTML=
-`POS: ${p.x.toFixed(2)} , ${p.y.toFixed(2)}
-ROT: ${p.a.toFixed(2)}
+`
+WASD = Move<br>
+Arrow Keys = Turn<br>
+X:${player.x.toFixed(1)}
+Y:${player.y.toFixed(1)}
 `;
 
 requestAnimationFrame(loop);
+
 }
 
 loop();
+
 </script>
 
 </body>
