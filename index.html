@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Ruined City FPS - Updated</title>
+<title>Ruined City FPS Stable Build</title>
 
 <style>
 body{
@@ -66,7 +66,7 @@ y===MAP-1
 world[y][x]=1;
 }
 
-/* city streets */
+/* streets */
 else if(
 x%7===0||
 y%7===0
@@ -74,7 +74,7 @@ y%7===0
 world[y][x]=0;
 }
 
-/* buildings */
+/* dense buildings */
 else if(Math.random()<0.82){
 world[y][x]=1;
 }
@@ -87,7 +87,7 @@ world[y][x]=0;
 
 }
 
-/* guaranteed spawn area */
+/* guaranteed spawn */
 for(let y=8;y<14;y++){
 for(let x=8;x<14;x++){
 world[y][x]=0;
@@ -160,23 +160,23 @@ const pad=getPad();
 
 if(!pad) return;
 
-/* left stick */
+/* LEFT STICK */
 const lx=dz(pad.axes[0]);
 const ly=dz(pad.axes[1]);
 
-/* right stick */
+/* RIGHT STICK */
 const rx=dz(pad.axes[2]);
 
-/* UPDATED CAMERA SPEED */
+/* smoother camera */
 player.a += rx*0.065;
 
-/* UPDATED MOVEMENT SPEED */
+/* movement speed */
 const speed=
 pad.buttons[5].pressed
 ?0.16
 :0.11;
 
-/* movement */
+/* movement vector */
 let mx=0;
 let my=0;
 
@@ -188,15 +188,28 @@ my += Math.sin(player.a)*(-ly)*speed;
 mx += Math.cos(player.a+Math.PI/2)*lx*speed;
 my += Math.sin(player.a+Math.PI/2)*lx*speed;
 
-/* collision */
+/* =========================
+   IMPROVED COLLISION
+========================= */
+
 let nx=player.x+mx;
 let ny=player.y+my;
 
-if(!wall(nx,player.y)){
+const radius=0.2;
+
+/* X movement */
+if(
+!wall(nx+radius,player.y) &&
+!wall(nx-radius,player.y)
+){
 player.x=nx;
 }
 
-if(!wall(player.x,ny)){
+/* Y movement */
+if(
+!wall(player.x,ny+radius) &&
+!wall(player.x,ny-radius)
+){
 player.y=ny;
 }
 
@@ -208,7 +221,7 @@ player.y=ny;
 
 function render(){
 
-/* sky */
+/* SKY */
 let sky=
 ctx.createLinearGradient(
 0,0,0,canvas.height/2
@@ -225,7 +238,7 @@ canvas.width,
 canvas.height/2
 );
 
-/* ground */
+/* FLOOR */
 let floor=
 ctx.createLinearGradient(
 0,
@@ -245,7 +258,7 @@ canvas.width,
 canvas.height/2
 );
 
-/* fog */
+/* atmosphere */
 ctx.fillStyle="rgba(0,0,0,0.12)";
 ctx.fillRect(
 0,
