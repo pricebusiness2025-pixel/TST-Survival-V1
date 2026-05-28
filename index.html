@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Ruined City FPS - Analog Tuned</title>
+<title>Ruined City FPS - Wildlife Pass</title>
 
 <style>
 body{
@@ -25,7 +25,6 @@ font-family:monospace;
 font-size:14px;
 background:rgba(0,0,0,0.45);
 padding:10px;
-line-height:1.5;
 }
 </style>
 </head>
@@ -37,9 +36,9 @@ line-height:1.5;
 
 <script>
 
-/* =========================================
+/* =========================
    CANVAS
-========================================= */
+========================= */
 
 const canvas=document.getElementById("game");
 const ctx=canvas.getContext("2d");
@@ -47,9 +46,9 @@ const ctx=canvas.getContext("2d");
 canvas.width=window.innerWidth;
 canvas.height=window.innerHeight;
 
-/* =========================================
+/* =========================
    WORLD
-========================================= */
+========================= */
 
 const MAP=50;
 let world=[];
@@ -62,7 +61,6 @@ world[y]=[];
 
 for(let x=0;x<MAP;x++){
 
-/* border walls */
 if(
 x===0||
 y===0||
@@ -71,20 +69,12 @@ y===MAP-1
 ){
 world[y][x]=1;
 }
-
-/* streets */
-else if(
-x%7===0||
-y%7===0
-){
+else if(x%7===0||y%7===0){
 world[y][x]=0;
 }
-
-/* buildings */
 else if(Math.random()<0.82){
 world[y][x]=1;
 }
-
 else{
 world[y][x]=0;
 }
@@ -93,7 +83,7 @@ world[y][x]=0;
 
 }
 
-/* safe spawn */
+/* spawn */
 for(let y=8;y<14;y++){
 for(let x=8;x<14;x++){
 world[y][x]=0;
@@ -104,207 +94,198 @@ world[y][x]=0;
 
 generateWorld();
 
-/* =========================================
+/* =========================
    PLAYER
-========================================= */
+========================= */
 
 let player={
-
 x:10,
 y:10,
-
 a:0,
-
 vx:0,
 vy:0
-
 };
 
-/* =========================================
+/* =========================
    GAMEPAD
-========================================= */
+========================= */
 
 function getPad(){
-
 const pads=navigator.getGamepads();
-
-if(!pads) return null;
-
-return pads[0];
-
+return pads ? pads[0] : null;
 }
 
 function dz(v){
-
-return Math.abs(v)<0.15 ? 0 : v;
-
+return Math.abs(v)<0.15?0:v;
 }
 
-/* =========================================
+/* =========================
+   WILDLIFE ENTITIES
+========================= */
+
+let entities=[];
+
+/* spawn wildlife */
+for(let i=0;i<18;i++){
+
+let type=Math.random();
+
+entities.push({
+x:10+Math.random()*30,
+y:10+Math.random()*30,
+vx:0,
+vy:0,
+type:
+type<0.4?"rabbit":
+type<0.75?"deer":"wolf"
+});
+}
+
+/* =========================
    WALL
-========================================= */
+========================= */
 
 function wall(x,y){
 
 x=Math.floor(x);
 y=Math.floor(y);
 
-if(
-x<0||
-y<0||
-x>=MAP||
-y>=MAP
-){
-return 1;
-}
-
+if(x<0||y<0||x>=MAP||y>=MAP) return 1;
 return world[y][x];
 
 }
 
-/* =========================================
-   UPDATE
-========================================= */
+/* =========================
+   UPDATE PLAYER
+========================= */
 
-function update(){
+function updatePlayer(){
 
 const pad=getPad();
-
 if(!pad) return;
-
-/* =========================================
-   ANALOG INPUT
-========================================= */
 
 let lx=dz(pad.axes[0]);
 let ly=dz(pad.axes[1]);
 let rx=dz(pad.axes[2]);
 
-/* analog response curve */
+/* analog curve */
 lx=Math.sign(lx)*(lx*lx);
 ly=Math.sign(ly)*(ly*ly);
 rx=Math.sign(rx)*(rx*rx);
 
-/* =========================================
-   CAMERA
-========================================= */
+player.a += rx*0.06;
 
-player.a += rx*0.065;
-
-/* =========================================
-   MOVEMENT
-========================================= */
-
-const accel=
-pad.buttons[5].pressed
-?0.008
-:0.005;
-
+/* movement */
+const accel=pad.buttons[5].pressed?0.008:0.005;
 const friction=0.72;
 
-/* forward/back */
-player.vx +=
-Math.cos(player.a)*(-ly)*accel;
+player.vx += Math.cos(player.a)*(-ly)*accel;
+player.vy += Math.sin(player.a)*(-ly)*accel;
 
-player.vy +=
-Math.sin(player.a)*(-ly)*accel;
+player.vx += Math.cos(player.a+Math.PI/2)*lx*accel;
+player.vy += Math.sin(player.a+Math.PI/2)*lx*accel;
 
-/* strafe */
-player.vx +=
-Math.cos(player.a+Math.PI/2)*lx*accel;
+player.vx*=friction;
+player.vy*=friction;
 
-player.vy +=
-Math.sin(player.a+Math.PI/2)*lx*accel;
+/* clamp */
+let sp=Math.hypot(player.vx,player.vy);
+let max=pad.buttons[5].pressed?0.16:0.1;
 
-/* friction */
-player.vx *= friction;
-player.vy *= friction;
-
-/* speed clamp */
-const maxSpeed=
-pad.buttons[5].pressed
-?0.16
-:0.10;
-
-let speed=Math.hypot(
-player.vx,
-player.vy
-);
-
-if(speed>maxSpeed){
-
-player.vx=
-(player.vx/speed)*maxSpeed;
-
-player.vy=
-(player.vy/speed)*maxSpeed;
-
+if(sp>max){
+player.vx=(player.vx/sp)*max;
+player.vy=(player.vy/sp)*max;
 }
 
-/* next position */
 let nx=player.x+player.vx;
 let ny=player.y+player.vy;
 
-/* collision radius */
-const radius=0.2;
+const r=0.2;
 
-/* X collision */
-if(
-!wall(nx+radius,player.y) &&
-!wall(nx-radius,player.y)
-){
+if(!wall(nx+r,player.y)&&!wall(nx-r,player.y)){
 player.x=nx;
-}
-else{
-player.vx*=0.3;
-}
+}else player.vx*=0.3;
 
-/* Y collision */
-if(
-!wall(player.x,ny+radius) &&
-!wall(player.x,ny-radius)
-){
+if(!wall(player.x,ny+r)&&!wall(player.x,ny-r)){
 player.y=ny;
-}
-else{
-player.vy*=0.3;
-}
+}else player.vy*=0.3;
 
 }
 
-/* =========================================
-   RENDER
-========================================= */
+/* =========================
+   UPDATE ENTITIES
+========================= */
 
-function render(){
+function updateEntities(){
 
-/* sky */
+for(let e of entities){
+
+let dx=player.x-e.x;
+let dy=player.y-e.y;
+let dist=Math.hypot(dx,dy);
+
+/* simple AI */
+if(e.type==="rabbit"){
+
+/* random wander */
+e.vx+=(Math.random()-0.5)*0.01;
+e.vy+=(Math.random()-0.5)*0.01;
+
+}
+
+/* deer = calm wander */
+if(e.type==="deer"){
+e.vx+=(Math.random()-0.5)*0.008;
+e.vy+=(Math.random()-0.5)*0.008;
+}
+
+/* wolf = flee or stalk */
+if(e.type==="wolf"){
+
+if(dist<6){
+/* flee */
+e.vx-=(dx/dist)*0.02;
+e.vy-=(dy/dist)*0.02;
+}else{
+/* wander */
+e.vx+=(Math.random()-0.5)*0.006;
+e.vy+=(Math.random()-0.5)*0.006;
+}
+
+}
+
+/* friction */
+e.vx*=0.9;
+e.vy*=0.9;
+
+/* move */
+let nx=e.x+e.vx;
+let ny=e.y+e.vy;
+
+if(!wall(nx,e.y)) e.x=nx;
+if(!wall(e.x,ny)) e.y=ny;
+
+}
+
+}
+
+/* =========================
+   RENDER WORLD
+========================= */
+
+function renderWorld(){
+
 ctx.fillStyle="#425d7a";
-ctx.fillRect(
-0,
-0,
-canvas.width,
-canvas.height/2
-);
+ctx.fillRect(0,0,canvas.width,canvas.height/2);
 
-/* ground */
 ctx.fillStyle="#2d2d2d";
-ctx.fillRect(
-0,
-canvas.height/2,
-canvas.width,
-canvas.height/2
-);
+ctx.fillRect(0,canvas.height/2,canvas.width,canvas.height/2);
 
-/* FOV */
 const FOV=Math.PI/3;
 
-/* optimized raycasting */
 for(let x=0;x<canvas.width;x+=8){
 
-let ray=
-(player.a-FOV/2)+
-(x/canvas.width)*FOV;
+let ray=(player.a-FOV/2)+(x/canvas.width)*FOV;
 
 let dist=0;
 let hit=false;
@@ -313,39 +294,21 @@ while(!hit && dist<16){
 
 dist+=0.08;
 
-let rx=
-player.x+
-Math.cos(ray)*dist;
+let rx=player.x+Math.cos(ray)*dist;
+let ry=player.y+Math.sin(ray)*dist;
 
-let ry=
-player.y+
-Math.sin(ray)*dist;
-
-if(wall(rx,ry)){
-hit=true;
-}
+if(wall(rx,ry)) hit=true;
 
 }
 
-/* fisheye correction */
-let corrected=
-dist*Math.cos(ray-player.a);
+let corrected=dist*Math.cos(ray-player.a);
 
-/* wall height */
-let h=
-canvas.height/
-(corrected+0.2);
+let h=canvas.height/(corrected+0.2);
 
-/* shading */
-let shade=
-170-corrected*10;
+let shade=170-corrected*10;
+if(shade<30) shade=30;
 
-if(shade<30){
-shade=30;
-}
-
-ctx.fillStyle=
-`rgb(${shade},${shade},${shade+8})`;
+ctx.fillStyle=`rgb(${shade},${shade},${shade+8})`;
 
 ctx.fillRect(
 x,
@@ -358,26 +321,82 @@ h
 
 }
 
-/* =========================================
+/* =========================
+   RENDER ENTITIES (DOOM SPRITES)
+========================= */
+
+function renderEntities(){
+
+/* sort far to near */
+entities.sort((a,b)=>{
+let da=Math.hypot(player.x-a.x,player.y-a.y);
+let db=Math.hypot(player.x-b.x,player.y-b.y);
+return db-da;
+});
+
+for(let e of entities){
+
+let dx=e.x-player.x;
+let dy=e.y-player.y;
+
+let dist=Math.hypot(dx,dy);
+
+/* angle to entity */
+let angle=Math.atan2(dy,dx)-player.a;
+
+/* normalize angle */
+while(angle<-Math.PI) angle+=Math.PI*2;
+while(angle>Math.PI) angle-=Math.PI*2;
+
+/* skip behind player */
+if(Math.abs(angle)>1.2) continue;
+
+/* screen position */
+let screenX=
+(canvas.width/2)+
+Math.tan(angle)*(canvas.width/2);
+
+/* size */
+let size=
+canvas.height/(dist*1.2);
+
+/* color by type */
+let color;
+
+if(e.type==="rabbit") color="255,255,255";
+if(e.type==="deer") color="160,120,80";
+if(e.type==="wolf") color="60,60,60";
+
+/* draw sprite */
+ctx.fillStyle=`rgba(${color},0.9)`;
+
+ctx.fillRect(
+screenX-size/2,
+(canvas.height/2)-size/2,
+size,
+size
+);
+
+}
+
+}
+
+/* =========================
    LOOP
-========================================= */
+========================= */
 
 function loop(){
 
-update();
-render();
+updatePlayer();
+updateEntities();
 
-/* UI */
+renderWorld();
+renderEntities();
+
 document.getElementById("ui").innerHTML=
 `
-🎮 CONTROLS<br>
-LEFT STICK = MOVE<br>
-RIGHT STICK = LOOK<br>
-RB = SPRINT<br><br>
-
-📍 POSITION<br>
-X: ${player.x.toFixed(1)}<br>
-Y: ${player.y.toFixed(1)}
+🐾 ENTITIES: ${entities.length}<br>
+X:${player.x.toFixed(1)} Y:${player.y.toFixed(1)}
 `;
 
 requestAnimationFrame(loop);
