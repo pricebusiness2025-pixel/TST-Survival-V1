@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Ruined City Render Pass</title>
+<title>Ruined City FPS - Updated</title>
 
 <style>
 body{
@@ -56,7 +56,7 @@ world[y]=[];
 
 for(let x=0;x<MAP;x++){
 
-/* border */
+/* borders */
 if(
 x===0||
 y===0||
@@ -87,7 +87,7 @@ world[y][x]=0;
 
 }
 
-/* spawn safe zone */
+/* guaranteed spawn area */
 for(let y=8;y<14;y++){
 for(let x=8;x<14;x++){
 world[y][x]=0;
@@ -160,19 +160,21 @@ const pad=getPad();
 
 if(!pad) return;
 
-/* sticks */
+/* left stick */
 const lx=dz(pad.axes[0]);
 const ly=dz(pad.axes[1]);
+
+/* right stick */
 const rx=dz(pad.axes[2]);
 
-/* smoother rotation */
-player.a += rx*0.04;
+/* UPDATED CAMERA SPEED */
+player.a += rx*0.065;
 
-/* sprint */
+/* UPDATED MOVEMENT SPEED */
 const speed=
 pad.buttons[5].pressed
-?0.11
-:0.07;
+?0.16
+:0.11;
 
 /* movement */
 let mx=0;
@@ -206,7 +208,7 @@ player.y=ny;
 
 function render(){
 
-/* sky gradient */
+/* sky */
 let sky=
 ctx.createLinearGradient(
 0,0,0,canvas.height/2
@@ -243,7 +245,7 @@ canvas.width,
 canvas.height/2
 );
 
-/* fog overlay */
+/* fog */
 ctx.fillStyle="rgba(0,0,0,0.12)";
 ctx.fillRect(
 0,
@@ -255,8 +257,7 @@ canvas.height
 /* FOV */
 const FOV=Math.PI/3;
 
-/* PERFORMANCE:
-   larger ray columns */
+/* raycasting */
 for(let x=0;x<canvas.width;x+=4){
 
 let ray=
@@ -266,8 +267,6 @@ let ray=
 let dist=0;
 let hit=false;
 
-/* PERFORMANCE:
-   bigger ray step */
 while(!hit && dist<20){
 
 dist+=0.04;
@@ -295,7 +294,7 @@ let h=
 canvas.height/
 (corrected+0.15);
 
-/* ruined wall texture illusion */
+/* shading */
 let shade=
 190-corrected*8;
 
@@ -303,17 +302,13 @@ if(shade<35){
 shade=35;
 }
 
-/* texture variation */
+/* texture illusion */
 let tex=
 Math.sin(corrected*8)*15;
 
-/* final wall color */
 let r=shade+tex;
 let g=shade+tex;
-let b=shade+tex;
-
-/* subtle blue tint */
-b+=10;
+let b=shade+tex+10;
 
 ctx.fillStyle=
 `rgb(${r},${g},${b})`;
@@ -325,7 +320,7 @@ x,
 h
 );
 
-/* fake cracks */
+/* cracks */
 if(h>120){
 
 ctx.fillStyle=
