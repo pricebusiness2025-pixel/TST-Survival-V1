@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Mars Surface Atmosphere FPS</title>
+<title>Mars Open Surface</title>
 
 <style>
 body{
@@ -13,7 +13,6 @@ background:black;
 
 canvas{
 display:block;
-image-rendering:pixelated;
 }
 
 #ui{
@@ -22,10 +21,8 @@ top:10px;
 left:10px;
 color:white;
 font-family:monospace;
-font-size:14px;
-background:rgba(0,0,0,0.45);
+background:rgba(0,0,0,0.4);
 padding:10px;
-line-height:1.5;
 }
 </style>
 </head>
@@ -48,14 +45,14 @@ canvas.width=window.innerWidth;
 canvas.height=window.innerHeight;
 
 /* =========================
-   WORLD
+   WORLD (OPEN TERRAIN)
 ========================= */
 
-const MAP=50;
+const MAP=60;
 let world=[];
 
 /*
-0 = empty sand
+0 = sand
 1 = rock
 2 = glowing plant
 */
@@ -69,17 +66,17 @@ for(let x=0;x<MAP;x++){
 
 let r=Math.random();
 
-if(r<0.75) world[y][x]=0;      // sand
-else if(r<0.92) world[y][x]=1; // rock
-else world[y][x]=2;           // glow plant
+if(r<0.78) world[y][x]=0;
+else if(r<0.93) world[y][x]=1;
+else world[y][x]=2;
 
 }
 
 }
 
-/* crash site safe zone */
-for(let y=6;y<16;y++){
-for(let x=6;x<16;x++){
+/* crash zone */
+for(let y=10;y<18;y++){
+for(let x=10;x<18;x++){
 world[y][x]=0;
 }
 }
@@ -93,8 +90,8 @@ generateWorld();
 ========================= */
 
 let player={
-x:10,
-y:10,
+x:30,
+y:30,
 a:0,
 vx:0,
 vy:0
@@ -114,22 +111,7 @@ return Math.abs(v)<0.15?0:v;
 }
 
 /* =========================
-   WALL CHECK
-========================= */
-
-function wall(x,y){
-
-x=Math.floor(x);
-y=Math.floor(y);
-
-if(x<0||y<0||x>=MAP||y>=MAP) return 1;
-
-return world[y][x];
-
-}
-
-/* =========================
-   PLAYER UPDATE
+   UPDATE PLAYER
 ========================= */
 
 function updatePlayer(){
@@ -145,11 +127,12 @@ lx=Math.sign(lx)*(lx*lx);
 ly=Math.sign(ly)*(ly*ly);
 rx=Math.sign(rx)*(rx*rx);
 
-player.a += rx*0.06;
+player.a += rx*0.05;
 
-const accel=pad.buttons[5].pressed?0.008:0.005;
-const friction=0.72;
+const accel=pad.buttons[5].pressed?0.01:0.006;
+const friction=0.78;
 
+/* movement */
 player.vx += Math.cos(player.a)*(-ly)*accel;
 player.vy += Math.sin(player.a)*(-ly)*accel;
 
@@ -159,36 +142,17 @@ player.vy += Math.sin(player.a+Math.PI/2)*lx*accel;
 player.vx*=friction;
 player.vy*=friction;
 
-let sp=Math.hypot(player.vx,player.vy);
-let max=pad.buttons[5].pressed?0.16:0.1;
-
-if(sp>max){
-player.vx=(player.vx/sp)*max;
-player.vy=(player.vy/sp)*max;
-}
-
-let nx=player.x+player.vx;
-let ny=player.y+player.vy;
-
-const r=0.2;
-
-if(!wall(nx+r,player.y)&&!wall(nx-r,player.y)){
-player.x=nx;
-}else player.vx*=0.3;
-
-if(!wall(player.x,ny+r)&&!wall(player.x,ny-r)){
-player.y=ny;
-}else player.vy*=0.3;
+player.x+=player.vx;
+player.y+=player.vy;
 
 }
 
 /* =========================
-   RENDER WORLD (MARS LIGHT)
+   TERRAIN HEIGHT VISUAL (FAKE DEPTH)
 ========================= */
 
-function renderWorld(){
+function drawGround(){
 
-/* 🌌 SKY (purple → pink Mars haze) */
 let sky=ctx.createLinearGradient(0,0,0,canvas.height/2);
 sky.addColorStop(0,"#2b0a3d");
 sky.addColorStop(0.5,"#7a1b5e");
@@ -197,100 +161,83 @@ sky.addColorStop(1,"#ff4fa3");
 ctx.fillStyle=sky;
 ctx.fillRect(0,0,canvas.width,canvas.height/2);
 
-/* ☀️ RED-ORANGE SUN */
-let sunX = canvas.width*0.5 + (player.x-10)*25;
+/* sun */
+let sunX=canvas.width*0.5+(player.x-30)*10;
 
 ctx.fillStyle="rgba(255,80,40,0.95)";
 ctx.beginPath();
-ctx.arc(sunX,canvas.height*0.2,65,0,Math.PI*2);
+ctx.arc(sunX,canvas.height*0.2,60,0,Math.PI*2);
 ctx.fill();
 
-ctx.fillStyle="rgba(255,120,40,0.25)";
-ctx.beginPath();
-ctx.arc(sunX,canvas.height*0.2,130,0,Math.PI*2);
-ctx.fill();
-
-ctx.fillStyle="rgba(255,60,0,0.12)";
-ctx.beginPath();
-ctx.arc(sunX,canvas.height*0.2,200,0,Math.PI*2);
-ctx.fill();
-
-/* 🏜 SAND GROUND */
+/* ground gradient */
 let ground=ctx.createLinearGradient(
 0,canvas.height/2,
 0,canvas.height
 );
 
-ground.addColorStop(0,"#b88e5a");
-ground.addColorStop(1,"#7a5a33");
+ground.addColorStop(0,"#c79a63");
+ground.addColorStop(1,"#7b552f");
 
 ctx.fillStyle=ground;
 ctx.fillRect(0,canvas.height/2,canvas.width,canvas.height/2);
 
-const FOV=Math.PI/3;
-
-for(let x=0;x<canvas.width;x+=10){
-
-let ray=(player.a-FOV/2)+(x/canvas.width)*FOV;
-
-let dist=0;
-let hit=false;
-let wallType=0;
-
-while(!hit && dist<16){
-
-dist+=0.08;
-
-let rx=player.x+Math.cos(ray)*dist;
-let ry=player.y+Math.sin(ray)*dist;
-
-let wx=Math.floor(rx);
-let wy=Math.floor(ry);
-
-if(wx>=0&&wy>=0&&wx<MAP&&wy<MAP){
-
-if(world[wy][wx]>0){
-hit=true;
-wallType=world[wy][wx];
 }
 
-}
+/* =========================
+   DRAW TERRAIN OBJECTS (NO WALLS)
+========================= */
 
-}
+function drawObjects(){
 
-let corrected=dist*Math.cos(ray-player.a);
+for(let y=0;y<MAP;y++){
+for(let x=0;x<MAP;x++){
 
-/* lighting */
-let shade=150-corrected*11;
-if(shade<30) shade=30;
+let tile=world[y][x];
+if(tile===0) continue;
 
-/* mars tint */
-let r=shade*1.2;
-let g=shade*0.9;
-let b=shade*0.6;
+/* distance */
+let dx=x-player.x;
+let dy=y-player.y;
+let dist=Math.sqrt(dx*dx+dy*dy);
 
-/* rock + plant variation */
-if(wallType===1){
-r*=0.9; g*=0.8; b*=0.7;
-}
-if(wallType===2){
-r*=0.6; g*=1.2; b*=0.8;
-}
+/* angle */
+let angle=Math.atan2(dy,dx)-player.a;
 
-ctx.fillStyle=`rgb(${r},${g},${b})`;
+while(angle<-Math.PI) angle+=Math.PI*2;
+while(angle>Math.PI) angle-=Math.PI*2;
 
+/* only forward view */
+if(Math.abs(angle)>1.2) continue;
+
+/* screen position */
+let screenX=(canvas.width/2)+Math.tan(angle)*(canvas.width/2);
+
+/* size based on distance */
+let size=canvas.height/(dist*1.5);
+
+/* fog */
+let alpha=Math.max(0.1,1-dist/18);
+
+/* colors */
+let color;
+
+if(tile===1) color="160,120,80"; // rock
+if(tile===2) color="80,255,180"; // glow plant
+
+ctx.globalAlpha=alpha;
+
+ctx.fillStyle=`rgb(${color})`;
 ctx.fillRect(
-x,
-(canvas.height/2)-(canvas.height/(corrected+0.2))/2,
-10,
-canvas.height/(corrected+0.2)
+screenX-size/2,
+(canvas.height/2)-size/2,
+size,
+size
 );
 
-}
+ctx.globalAlpha=1;
 
-/* 🌫 FOG LAYER */
-ctx.fillStyle="rgba(255,120,160,0.06)";
-ctx.fillRect(0,0,canvas.width,canvas.height);
+}
+}
 
 }
 
@@ -298,20 +245,16 @@ ctx.fillRect(0,0,canvas.width,canvas.height);
    LOOP
 ========================= */
 
-function update(){
+function loop(){
 
 updatePlayer();
 
-}
-
-function loop(){
-
-update();
-renderWorld();
+drawGround();
+drawObjects();
 
 document.getElementById("ui").innerHTML=
 `
-🪐 MARS SURFACE<br>
+🪐 MARS SURFACE (NO WALLS)<br>
 X:${player.x.toFixed(1)} Y:${player.y.toFixed(1)}
 `;
 
