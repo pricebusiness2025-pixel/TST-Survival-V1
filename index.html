@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Mars Open Surface</title>
+<title>Voxel Mars Surface</title>
 
 <style>
 body{
@@ -45,16 +45,16 @@ canvas.width=window.innerWidth;
 canvas.height=window.innerHeight;
 
 /* =========================
-   WORLD (OPEN TERRAIN)
+   WORLD (HEIGHT MAP)
 ========================= */
 
 const MAP=60;
 let world=[];
 
 /*
-0 = sand
-1 = rock
-2 = glowing plant
+0 = sand (height 0)
+1 = rock (height 1)
+2 = plant (height 2+ glow)
 */
 
 function generateWorld(){
@@ -66,15 +66,15 @@ for(let x=0;x<MAP;x++){
 
 let r=Math.random();
 
-if(r<0.78) world[y][x]=0;
-else if(r<0.93) world[y][x]=1;
+if(r<0.75) world[y][x]=0;
+else if(r<0.92) world[y][x]=1;
 else world[y][x]=2;
 
 }
 
 }
 
-/* crash zone */
+/* safe crash zone */
 for(let y=10;y<18;y++){
 for(let x=10;x<18;x++){
 world[y][x]=0;
@@ -130,9 +130,8 @@ rx=Math.sign(rx)*(rx*rx);
 player.a += rx*0.05;
 
 const accel=pad.buttons[5].pressed?0.01:0.006;
-const friction=0.78;
+const friction=0.8;
 
-/* movement */
 player.vx += Math.cos(player.a)*(-ly)*accel;
 player.vy += Math.sin(player.a)*(-ly)*accel;
 
@@ -148,57 +147,49 @@ player.y+=player.vy;
 }
 
 /* =========================
-   TERRAIN HEIGHT VISUAL (FAKE DEPTH)
+   VOXEL RENDER (FAKE 3D HEIGHT)
 ========================= */
 
-function drawGround(){
+function render(){
 
+/* SKY */
 let sky=ctx.createLinearGradient(0,0,0,canvas.height/2);
 sky.addColorStop(0,"#2b0a3d");
-sky.addColorStop(0.5,"#7a1b5e");
-sky.addColorStop(1,"#ff4fa3");
+sky.addColorStop(1,"#ff4a2f");
 
 ctx.fillStyle=sky;
 ctx.fillRect(0,0,canvas.width,canvas.height/2);
 
-/* sun */
+/* SUN */
 let sunX=canvas.width*0.5+(player.x-30)*10;
 
-ctx.fillStyle="rgba(255,80,40,0.95)";
+ctx.fillStyle="rgba(255,80,30,0.9)";
 ctx.beginPath();
 ctx.arc(sunX,canvas.height*0.2,60,0,Math.PI*2);
 ctx.fill();
 
-/* ground gradient */
-let ground=ctx.createLinearGradient(
-0,canvas.height/2,
-0,canvas.height
-);
-
-ground.addColorStop(0,"#c79a63");
-ground.addColorStop(1,"#7b552f");
+/* GROUND BASE */
+let ground=ctx.createLinearGradient(0,canvas.height/2,0,canvas.height);
+ground.addColorStop(0,"#c89a62");
+ground.addColorStop(1,"#7a5530");
 
 ctx.fillStyle=ground;
 ctx.fillRect(0,canvas.height/2,canvas.width,canvas.height/2);
 
-}
-
 /* =========================
-   DRAW TERRAIN OBJECTS (NO WALLS)
+   DRAW BLOCKS AS HEIGHT STACKS
 ========================= */
-
-function drawObjects(){
 
 for(let y=0;y<MAP;y++){
 for(let x=0;x<MAP;x++){
 
 let tile=world[y][x];
-if(tile===0) continue;
 
-/* distance */
 let dx=x-player.x;
 let dy=y-player.y;
 let dist=Math.sqrt(dx*dx+dy*dy);
+
+if(dist>25) continue;
 
 /* angle */
 let angle=Math.atan2(dy,dx)-player.a;
@@ -206,38 +197,48 @@ let angle=Math.atan2(dy,dx)-player.a;
 while(angle<-Math.PI) angle+=Math.PI*2;
 while(angle>Math.PI) angle-=Math.PI*2;
 
-/* only forward view */
 if(Math.abs(angle)>1.2) continue;
 
 /* screen position */
 let screenX=(canvas.width/2)+Math.tan(angle)*(canvas.width/2);
 
-/* size based on distance */
-let size=canvas.height/(dist*1.5);
+/* fake depth */
+let size=canvas.height/(dist*1.2);
+
+/* height system */
+let height=0;
+if(tile===1) height=0.6;   // rock
+if(tile===2) height=1.2;   // plant
+
+/* color */
+let r=200,g=160,b=100;
+
+if(tile===1){ r=140; g=120; b=90; }
+if(tile===2){ r=80; g=255; b=180; }
 
 /* fog */
-let alpha=Math.max(0.1,1-dist/18);
+let fog=Math.max(0.15,1-dist/25);
 
-/* colors */
-let color;
+ctx.globalAlpha=fog;
 
-if(tile===1) color="160,120,80"; // rock
-if(tile===2) color="80,255,180"; // glow plant
+/* draw block (stack illusion) */
+ctx.fillStyle=`rgb(${r},${g},${b})`;
 
-ctx.globalAlpha=alpha;
-
-ctx.fillStyle=`rgb(${color})`;
 ctx.fillRect(
 screenX-size/2,
-(canvas.height/2)-size/2,
+(canvas.height/2)-(size*height),
 size,
-size
+size*height
 );
 
 ctx.globalAlpha=1;
 
 }
 }
+
+/* fog overlay */
+ctx.fillStyle="rgba(255,120,120,0.05)";
+ctx.fillRect(0,0,canvas.width,canvas.height);
 
 }
 
@@ -248,13 +249,11 @@ ctx.globalAlpha=1;
 function loop(){
 
 updatePlayer();
-
-drawGround();
-drawObjects();
+render();
 
 document.getElementById("ui").innerHTML=
 `
-🪐 MARS SURFACE (NO WALLS)<br>
+🪨 VOXEL MARS<br>
 X:${player.x.toFixed(1)} Y:${player.y.toFixed(1)}
 `;
 
