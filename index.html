@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Playable Doom City Core</title>
+<title>Controller FPS Core</title>
 <style>
 body{
 margin:0;
@@ -37,12 +37,11 @@ canvas.width=window.innerWidth;
 canvas.height=window.innerHeight;
 
 const MAP=40;
-const TILE=1;
 
 let world=[];
 
 /* =========================
-   MAP GENERATION
+   WORLD
 ========================= */
 
 function generateWorld(){
@@ -53,7 +52,6 @@ world[y]=[];
 
 for(let x=0;x<MAP;x++){
 
-/* outer walls */
 if(
 x===0||
 y===0||
@@ -63,7 +61,7 @@ y===MAP-1
 world[y][x]=1;
 }
 
-/* city blocks */
+/* structured streets */
 else if(
 x%6===0||
 y%6===0
@@ -71,7 +69,6 @@ y%6===0
 world[y][x]=1;
 }
 
-/* open space */
 else{
 world[y][x]=0;
 }
@@ -80,7 +77,7 @@ world[y][x]=0;
 
 }
 
-/* guaranteed spawn area */
+/* guaranteed spawn */
 for(let y=8;y<14;y++){
 for(let x=8;x<14;x++){
 world[y][x]=0;
@@ -102,21 +99,29 @@ a:0
 };
 
 /* =========================
-   INPUT
+   CONTROLLER
 ========================= */
 
-let keys={};
+function getPad(){
 
-window.addEventListener("keydown",e=>{
-keys[e.key.toLowerCase()]=true;
-});
+const pads=navigator.getGamepads();
 
-window.addEventListener("keyup",e=>{
-keys[e.key.toLowerCase()]=false;
-});
+if(!pads) return null;
+
+return pads[0];
+
+}
+
+function dead(v){
+
+if(Math.abs(v)<0.15) return 0;
+
+return v;
+
+}
 
 /* =========================
-   COLLISION
+   WALL
 ========================= */
 
 function wall(x,y){
@@ -124,7 +129,12 @@ function wall(x,y){
 x=Math.floor(x);
 y=Math.floor(y);
 
-if(x<0||y<0||x>=MAP||y>=MAP){
+if(
+x<0||
+y<0||
+x>=MAP||
+y>=MAP
+){
 return 1;
 }
 
@@ -133,54 +143,46 @@ return world[y][x];
 }
 
 /* =========================
-   MOVEMENT
+   UPDATE
 ========================= */
 
 function update(){
 
-let moveSpeed=0.06;
-let rotSpeed=0.04;
+const pad=getPad();
 
-/* rotate */
-if(keys["arrowleft"]){
-player.a-=rotSpeed;
-}
+if(!pad) return;
 
-if(keys["arrowright"]){
-player.a+=rotSpeed;
-}
+/* LEFT STICK = MOVEMENT */
+const lx=dead(pad.axes[0]);
+const ly=dead(pad.axes[1]);
+
+/* RIGHT STICK = CAMERA */
+const rx=dead(pad.axes[2]);
+
+/* sprint */
+let speed=
+pad.buttons[5].pressed
+?0.10
+:0.06;
+
+/* camera */
+player.a += rx*0.05;
 
 /* movement */
-let mx=0;
-let my=0;
+let moveX=0;
+let moveY=0;
 
-/* forward */
-if(keys["w"]||keys["arrowup"]){
-mx+=Math.cos(player.a)*moveSpeed;
-my+=Math.sin(player.a)*moveSpeed;
-}
+/* forward/back */
+moveX += Math.cos(player.a)*(-ly)*speed;
+moveY += Math.sin(player.a)*(-ly)*speed;
 
-/* backward */
-if(keys["s"]||keys["arrowdown"]){
-mx-=Math.cos(player.a)*moveSpeed;
-my-=Math.sin(player.a)*moveSpeed;
-}
-
-/* strafe left */
-if(keys["a"]){
-mx+=Math.cos(player.a-Math.PI/2)*moveSpeed;
-my+=Math.sin(player.a-Math.PI/2)*moveSpeed;
-}
-
-/* strafe right */
-if(keys["d"]){
-mx+=Math.cos(player.a+Math.PI/2)*moveSpeed;
-my+=Math.sin(player.a+Math.PI/2)*moveSpeed;
-}
+/* strafe */
+moveX += Math.cos(player.a+Math.PI/2)*lx*speed;
+moveY += Math.sin(player.a+Math.PI/2)*lx*speed;
 
 /* collision */
-let nx=player.x+mx;
-let ny=player.y+my;
+let nx=player.x+moveX;
+let ny=player.y+moveY;
 
 if(!wall(nx,player.y)){
 player.x=nx;
@@ -199,11 +201,16 @@ player.y=ny;
 function render(){
 
 /* sky */
-ctx.fillStyle="#5a88c9";
-ctx.fillRect(0,0,canvas.width,canvas.height/2);
+ctx.fillStyle="#6fa8ff";
+ctx.fillRect(
+0,
+0,
+canvas.width,
+canvas.height/2
+);
 
 /* ground */
-ctx.fillStyle="#4b4b4b";
+ctx.fillStyle="#555";
 ctx.fillRect(
 0,
 canvas.height/2,
@@ -226,7 +233,7 @@ let hit=false;
 
 while(!hit && dist<20){
 
-dist+=0.02;
+dist+=0.03;
 
 let rx=
 player.x+
@@ -242,21 +249,21 @@ hit=true;
 
 }
 
-/* fisheye correction */
+/* fisheye fix */
 let corrected=
 dist*Math.cos(rayAngle-player.a);
 
-/* wall height */
+/* wall size */
 let h=
 canvas.height/
 (corrected+0.1);
 
 /* shading */
 let shade=
-255-corrected*12;
+255-corrected*10;
 
-if(shade<40){
-shade=40;
+if(shade<50){
+shade=50;
 }
 
 ctx.fillStyle=
@@ -284,8 +291,9 @@ render();
 
 document.getElementById("ui").innerHTML=
 `
-WASD = Move<br>
-Arrow Keys = Turn<br>
+LEFT STICK = MOVE<br>
+RIGHT STICK = LOOK<br>
+RB = SPRINT<br>
 X:${player.x.toFixed(1)}
 Y:${player.y.toFixed(1)}
 `;
