@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Optimized Ruined City FPS</title>
+<title>Grounded Ruined City FPS</title>
 
 <style>
 body{
@@ -72,7 +72,7 @@ y===MAP-1
 world[y][x]=1;
 }
 
-/* city streets */
+/* streets */
 else if(
 x%7===0||
 y%7===0
@@ -93,7 +93,7 @@ world[y][x]=0;
 
 }
 
-/* spawn zone */
+/* spawn area */
 for(let y=8;y<14;y++){
 for(let x=8;x<14;x++){
 world[y][x]=0;
@@ -172,23 +172,25 @@ const pad=getPad();
 
 if(!pad) return;
 
-/* left stick */
+/* sticks */
 const lx=dz(pad.axes[0]);
 const ly=dz(pad.axes[1]);
 
-/* right stick */
 const rx=dz(pad.axes[2]);
 
 /* camera */
 player.a += rx*0.065;
 
-/* movement physics */
+/* =========================================
+   MOVEMENT
+========================================= */
+
 const accel=
 pad.buttons[5].pressed
-?0.025
-:0.018;
+?0.014
+:0.010;
 
-const friction=0.82;
+const friction=0.72;
 
 /* forward/back */
 player.vx +=
@@ -208,11 +210,32 @@ Math.sin(player.a+Math.PI/2)*lx*accel;
 player.vx *= friction;
 player.vy *= friction;
 
+/* speed clamp */
+const maxSpeed=
+pad.buttons[5].pressed
+?0.16
+:0.10;
+
+let speed=Math.hypot(
+player.vx,
+player.vy
+);
+
+if(speed>maxSpeed){
+
+player.vx=
+(player.vx/speed)*maxSpeed;
+
+player.vy=
+(player.vy/speed)*maxSpeed;
+
+}
+
 /* next position */
 let nx=player.x+player.vx;
 let ny=player.y+player.vy;
 
-/* collision radius */
+/* player radius */
 const radius=0.2;
 
 /* X collision */
@@ -240,7 +263,7 @@ player.vy*=0.3;
 }
 
 /* =========================================
-   OPTIMIZED RENDER
+   RENDER
 ========================================= */
 
 function render(){
@@ -263,7 +286,7 @@ canvas.width,
 canvas.height/2
 );
 
-/* field of view */
+/* FOV */
 const FOV=Math.PI/3;
 
 /* optimized raycasting */
@@ -276,7 +299,6 @@ let ray=
 let dist=0;
 let hit=false;
 
-/* optimized stepping */
 while(!hit && dist<16){
 
 dist+=0.08;
