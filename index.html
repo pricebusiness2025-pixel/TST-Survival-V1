@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Ruined City FPS Stable Build</title>
+<title>Ruined City FPS Physics Build</title>
 
 <style>
 body{
@@ -22,8 +22,9 @@ left:10px;
 color:white;
 font-family:monospace;
 font-size:14px;
-background:rgba(0,0,0,0.4);
-padding:8px;
+background:rgba(0,0,0,0.45);
+padding:10px;
+line-height:1.5;
 }
 </style>
 </head>
@@ -41,9 +42,9 @@ const ctx=canvas.getContext("2d");
 canvas.width=window.innerWidth;
 canvas.height=window.innerHeight;
 
-/* =========================
+/* =========================================
    WORLD
-========================= */
+========================================= */
 
 const MAP=50;
 let world=[];
@@ -56,7 +57,7 @@ world[y]=[];
 
 for(let x=0;x<MAP;x++){
 
-/* borders */
+/* outer border */
 if(
 x===0||
 y===0||
@@ -74,7 +75,7 @@ y%7===0
 world[y][x]=0;
 }
 
-/* dense buildings */
+/* buildings */
 else if(Math.random()<0.82){
 world[y][x]=1;
 }
@@ -87,7 +88,7 @@ world[y][x]=0;
 
 }
 
-/* guaranteed spawn */
+/* safe spawn */
 for(let y=8;y<14;y++){
 for(let x=8;x<14;x++){
 world[y][x]=0;
@@ -98,19 +99,26 @@ world[y][x]=0;
 
 generateWorld();
 
-/* =========================
+/* =========================================
    PLAYER
-========================= */
+========================================= */
 
 let player={
+
 x:10,
 y:10,
-a:0
+
+a:0,
+
+/* physics velocity */
+vx:0,
+vy:0
+
 };
 
-/* =========================
+/* =========================================
    GAMEPAD
-========================= */
+========================================= */
 
 function getPad(){
 
@@ -128,9 +136,9 @@ return Math.abs(v)<0.15 ? 0 : v;
 
 }
 
-/* =========================
-   WALL
-========================= */
+/* =========================================
+   WALL CHECK
+========================================= */
 
 function wall(x,y){
 
@@ -150,9 +158,9 @@ return world[y][x];
 
 }
 
-/* =========================
+/* =========================================
    UPDATE
-========================= */
+========================================= */
 
 function update(){
 
@@ -160,71 +168,94 @@ const pad=getPad();
 
 if(!pad) return;
 
-/* LEFT STICK */
+/* =========================
+   STICKS
+========================= */
+
 const lx=dz(pad.axes[0]);
 const ly=dz(pad.axes[1]);
 
-/* RIGHT STICK */
 const rx=dz(pad.axes[2]);
 
-/* smoother camera */
-player.a += rx*0.065;
-
-/* movement speed */
-const speed=
-pad.buttons[5].pressed
-?0.16
-:0.11;
-
-/* movement vector */
-let mx=0;
-let my=0;
-
-/* forward/back */
-mx += Math.cos(player.a)*(-ly)*speed;
-my += Math.sin(player.a)*(-ly)*speed;
-
-/* strafe */
-mx += Math.cos(player.a+Math.PI/2)*lx*speed;
-my += Math.sin(player.a+Math.PI/2)*lx*speed;
-
 /* =========================
-   IMPROVED COLLISION
+   CAMERA
 ========================= */
 
-let nx=player.x+mx;
-let ny=player.y+my;
+player.a += rx*0.065;
 
+/* =========================
+   MOVEMENT PHYSICS
+========================= */
+
+const accel=
+pad.buttons[5].pressed
+?0.025
+:0.018;
+
+const friction=0.82;
+
+/* forward/back */
+player.vx +=
+Math.cos(player.a)*(-ly)*accel;
+
+player.vy +=
+Math.sin(player.a)*(-ly)*accel;
+
+/* strafe */
+player.vx +=
+Math.cos(player.a+Math.PI/2)*lx*accel;
+
+player.vy +=
+Math.sin(player.a+Math.PI/2)*lx*accel;
+
+/* friction */
+player.vx *= friction;
+player.vy *= friction;
+
+/* next position */
+let nx=player.x+player.vx;
+let ny=player.y+player.vy;
+
+/* player body radius */
 const radius=0.2;
 
-/* X movement */
+/* X collision */
 if(
 !wall(nx+radius,player.y) &&
 !wall(nx-radius,player.y)
 ){
 player.x=nx;
 }
+else{
+player.vx*=0.3;
+}
 
-/* Y movement */
+/* Y collision */
 if(
 !wall(player.x,ny+radius) &&
 !wall(player.x,ny-radius)
 ){
 player.y=ny;
 }
+else{
+player.vy*=0.3;
+}
 
 }
 
-/* =========================
+/* =========================================
    RENDER
-========================= */
+========================================= */
 
 function render(){
 
-/* SKY */
+/* sky */
 let sky=
 ctx.createLinearGradient(
-0,0,0,canvas.height/2
+0,
+0,
+0,
+canvas.height/2
 );
 
 sky.addColorStop(0,"#29384d");
@@ -238,7 +269,7 @@ canvas.width,
 canvas.height/2
 );
 
-/* FLOOR */
+/* ground */
 let floor=
 ctx.createLinearGradient(
 0,
@@ -247,8 +278,8 @@ canvas.height/2,
 canvas.height
 );
 
-floor.addColorStop(0,"#3f3f3f");
-floor.addColorStop(1,"#1e1e1e");
+floor.addColorStop(0,"#404040");
+floor.addColorStop(1,"#1f1f1f");
 
 ctx.fillStyle=floor;
 ctx.fillRect(
@@ -258,7 +289,7 @@ canvas.width,
 canvas.height/2
 );
 
-/* atmosphere */
+/* fog */
 ctx.fillStyle="rgba(0,0,0,0.12)";
 ctx.fillRect(
 0,
@@ -267,10 +298,10 @@ canvas.width,
 canvas.height
 );
 
-/* FOV */
+/* field of view */
 const FOV=Math.PI/3;
 
-/* raycasting */
+/* raycast */
 for(let x=0;x<canvas.width;x+=4){
 
 let ray=
@@ -298,7 +329,7 @@ hit=true;
 
 }
 
-/* fisheye correction */
+/* fisheye fix */
 let corrected=
 dist*Math.cos(ray-player.a);
 
@@ -333,7 +364,7 @@ x,
 h
 );
 
-/* cracks */
+/* fake cracks */
 if(h>120){
 
 ctx.fillStyle=
@@ -352,22 +383,30 @@ h
 
 }
 
-/* =========================
+/* =========================================
    LOOP
-========================= */
+========================================= */
 
 function loop(){
 
 update();
 render();
 
+/* UI */
 document.getElementById("ui").innerHTML=
 `
+🎮 CONTROLS<br>
 LEFT STICK = MOVE<br>
 RIGHT STICK = LOOK<br>
-RB = SPRINT<br>
-X:${player.x.toFixed(1)}
-Y:${player.y.toFixed(1)}
+RB = SPRINT<br><br>
+
+📍 POSITION<br>
+X: ${player.x.toFixed(1)}<br>
+Y: ${player.y.toFixed(1)}<br><br>
+
+⚙ VELOCITY<br>
+VX: ${player.vx.toFixed(2)}<br>
+VY: ${player.vy.toFixed(2)}
 `;
 
 requestAnimationFrame(loop);
