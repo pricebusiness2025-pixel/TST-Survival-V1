@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Ruined City Biomes FPS</title>
+<title>Mars Crash Site FPS</title>
 
 <style>
 body{
@@ -50,16 +50,17 @@ canvas.height=window.innerHeight;
 /* =========================
    WORLD TYPES
 ========================= */
+
+const MAP=50;
+let world=[];
+
 /*
-0 = street
-1 = building
+0 = empty
+1 = structure
 2 = ruins
 3 = steampunk
 4 = overgrowth
 */
-
-const MAP=50;
-let world=[];
 
 /* =========================
    WORLD GEN
@@ -68,7 +69,6 @@ let world=[];
 function generateWorld(){
 
 for(let y=0;y<MAP;y++){
-
 world[y]=[];
 
 for(let x=0;x<MAP;x++){
@@ -96,9 +96,9 @@ else world[y][x]=4;
 
 }
 
-/* spawn zone */
-for(let y=8;y<14;y++){
-for(let x=8;x<14;x++){
+/* 🛸 CRASH SITE (SAFE ZONE) */
+for(let y=6;y<16;y++){
+for(let x=6;x<16;x++){
 world[y][x]=0;
 }
 }
@@ -133,7 +133,23 @@ return Math.abs(v)<0.15?0:v;
 }
 
 /* =========================
-   WALL CHECK
+   ZONE SYSTEM
+========================= */
+
+function getZone(x,y){
+
+let dx=x-10;
+let dy=y-10;
+let dist=Math.sqrt(dx*dx+dy*dy);
+
+if(dist<6) return "safe";
+if(dist<18) return "normal";
+return "dead";
+
+}
+
+/* =========================
+   WALL
 ========================= */
 
 function wall(x,y){
@@ -148,35 +164,7 @@ return world[y][x];
 }
 
 /* =========================
-   ENTITIES (WILDLIFE)
-========================= */
-
-let entities=[];
-
-/* spawn in streets only */
-for(let i=0;i<22;i++){
-
-let x,y;
-
-do{
-x=Math.floor(Math.random()*MAP);
-y=Math.floor(Math.random()*MAP);
-}while(world[y][x]!==0);
-
-entities.push({
-x:x+0.5,
-y:y+0.5,
-vx:0,
-vy:0,
-type:
-Math.random()<0.4?"rabbit":
-Math.random()<0.75?"deer":"wolf"
-});
-
-}
-
-/* =========================
-   UPDATE PLAYER
+   PLAYER UPDATE
 ========================= */
 
 function updatePlayer(){
@@ -184,7 +172,6 @@ function updatePlayer(){
 const pad=getPad();
 if(!pad) return;
 
-/* sticks */
 let lx=dz(pad.axes[0]);
 let ly=dz(pad.axes[1]);
 let rx=dz(pad.axes[2]);
@@ -236,72 +223,41 @@ player.y=ny;
 }
 
 /* =========================
-   UPDATE ENTITIES
-========================= */
-
-function updateEntities(){
-
-for(let e of entities){
-
-let dx=player.x-e.x;
-let dy=player.y-e.y;
-let dist=Math.hypot(dx,dy);
-
-/* rabbit */
-if(e.type==="rabbit"){
-e.vx+=(Math.random()-0.5)*0.015;
-e.vy+=(Math.random()-0.5)*0.015;
-}
-
-/* deer */
-if(e.type==="deer"){
-e.vx+=(Math.random()-0.5)*0.01;
-e.vy+=(Math.random()-0.5)*0.01;
-}
-
-/* wolf */
-if(e.type==="wolf"){
-
-if(dist<6){
-e.vx-=(dx/dist)*0.02;
-e.vy-=(dy/dist)*0.02;
-}else{
-e.vx+=(Math.random()-0.5)*0.008;
-e.vy+=(Math.random()-0.5)*0.008;
-}
-
-}
-
-/* friction */
-e.vx*=0.9;
-e.vy*=0.9;
-
-/* move */
-let nx=e.x+e.vx;
-let ny=e.y+e.vy;
-
-if(!wall(nx,e.y)) e.x=nx;
-if(!wall(e.x,ny)) e.y=ny;
-
-}
-
-}
-
-/* =========================
    RENDER WORLD
 ========================= */
 
 function renderWorld(){
 
-ctx.fillStyle="#425d7a";
+/* 🌌 MARS SKY */
+let sky=ctx.createLinearGradient(
+0,0,0,canvas.height/2
+);
+
+sky.addColorStop(0,"#2b0a3d");
+sky.addColorStop(0.5,"#7a1b5e");
+sky.addColorStop(1,"#ff4fa3");
+
+ctx.fillStyle=sky;
 ctx.fillRect(0,0,canvas.width,canvas.height/2);
 
-ctx.fillStyle="#2d2d2d";
+/* ☀️ SUN */
+ctx.fillStyle="rgba(255,120,180,0.9)";
+ctx.beginPath();
+ctx.arc(canvas.width*0.75,canvas.height*0.2,60,0,Math.PI*2);
+ctx.fill();
+
+ctx.fillStyle="rgba(255,80,160,0.25)";
+ctx.beginPath();
+ctx.arc(canvas.width*0.75,canvas.height*0.2,120,0,Math.PI*2);
+ctx.fill();
+
+/* 🌋 GROUND */
+ctx.fillStyle="#3a0f12";
 ctx.fillRect(0,canvas.height/2,canvas.width,canvas.height/2);
 
 const FOV=Math.PI/3;
 
-for(let x=0;x<canvas.width;x+=8){
+for(let x=0;x<canvas.width;x+=10){
 
 let ray=(player.a-FOV/2)+(x/canvas.width)*FOV;
 
@@ -330,19 +286,16 @@ wallType=world[wy][wx];
 
 }
 
-/* fisheye */
 let corrected=dist*Math.cos(ray-player.a);
-
-/* wall height */
 let h=canvas.height/(corrected+0.2);
 
-/* base shading */
-let shade=170-corrected*10;
+/* base tone */
+let shade=140-corrected*12;
 if(shade<30) shade=30;
 
+/* Mars tint */
 let r=shade,g=shade,b=shade;
 
-/* biome tinting */
 if(wallType===2){ r*=0.8; g*=0.8; b*=0.85; }
 if(wallType===3){ r*=1.2; g*=0.9; b*=0.6; }
 if(wallType===4){ r*=0.7; g*=1.1; b*=0.7; }
@@ -352,71 +305,9 @@ ctx.fillStyle=`rgb(${r},${g},${b})`;
 ctx.fillRect(
 x,
 (canvas.height/2)-(h/2),
-8,
+10,
 h
 );
-
-}
-
-}
-
-/* =========================
-   RENDER ENTITIES (EMOJI DOOM SPRITES)
-========================= */
-
-function renderEntities(){
-
-entities.sort((a,b)=>{
-return Math.hypot(b.x-player.x,b.y-player.y) -
-Math.hypot(a.x-player.x,a.y-player.y);
-});
-
-for(let e of entities){
-
-let dx=e.x-player.x;
-let dy=e.y-player.y;
-
-let dist=Math.hypot(dx,dy);
-
-let angle=Math.atan2(dy,dx)-player.a;
-
-while(angle<-Math.PI) angle+=Math.PI*2;
-while(angle>Math.PI) angle-=Math.PI*2;
-
-if(Math.abs(angle)>1.2) continue;
-
-let screenX=
-(canvas.width/2)+
-Math.tan(angle)*(canvas.width/2);
-
-let size=canvas.height/(dist*1.2);
-
-/* emoji sprite */
-let sprite="";
-
-if(e.type==="rabbit") sprite="🐇";
-if(e.type==="deer") sprite="🦌";
-if(e.type==="wolf") sprite="🐺";
-
-/* scaling */
-let scale=Math.max(16,size);
-
-if(e.type==="wolf") scale*=1.1;
-
-ctx.font=`${scale}px monospace`;
-ctx.textAlign="center";
-ctx.textBaseline="middle";
-
-/* fade with distance */
-ctx.globalAlpha=Math.max(0.2,1-dist/18);
-
-ctx.fillText(
-sprite,
-screenX,
-canvas.height/2
-);
-
-ctx.globalAlpha=1;
 
 }
 
@@ -429,14 +320,13 @@ ctx.globalAlpha=1;
 function loop(){
 
 updatePlayer();
-updateEntities();
-
 renderWorld();
-renderEntities();
+
+let zone=getZone(player.x,player.y);
 
 document.getElementById("ui").innerHTML=
 `
-🐾 ENTITIES: ${entities.length}<br>
+🛸 ZONE: ${zone.toUpperCase()}<br>
 X:${player.x.toFixed(1)} Y:${player.y.toFixed(1)}
 `;
 
