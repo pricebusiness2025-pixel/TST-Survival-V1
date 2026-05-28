@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Voxel Mars Surface</title>
+<title>Emoji Mars Breeze World</title>
 
 <style>
 body{
@@ -45,17 +45,18 @@ canvas.width=window.innerWidth;
 canvas.height=window.innerHeight;
 
 /* =========================
-   WORLD (HEIGHT MAP)
+   WORLD
 ========================= */
 
-const MAP=60;
-let world=[];
+const MAP=40;
 
 /*
-0 = sand (height 0)
-1 = rock (height 1)
-2 = plant (height 2+ glow)
+🪨 rock = solid
+🌿 plant = passable + glowing sway
+⬛ sand = empty
 */
+
+let world=[];
 
 function generateWorld(){
 
@@ -66,18 +67,18 @@ for(let x=0;x<MAP;x++){
 
 let r=Math.random();
 
-if(r<0.75) world[y][x]=0;
-else if(r<0.92) world[y][x]=1;
-else world[y][x]=2;
+if(r<0.78) world[y][x]="⬛";
+else if(r<0.90) world[y][x]="🪨";
+else world[y][x]="🌿";
 
 }
 
 }
 
-/* safe crash zone */
-for(let y=10;y<18;y++){
-for(let x=10;x<18;x++){
-world[y][x]=0;
+/* crash site safe zone */
+for(let y=14;y<20;y++){
+for(let x=14;x<20;x++){
+world[y][x]="⬛";
 }
 }
 
@@ -90,20 +91,20 @@ generateWorld();
 ========================= */
 
 let player={
-x:30,
-y:30,
-a:0,
+x:20,
+y:20,
 vx:0,
-vy:0
+vy:0,
+a:0
 };
 
 /* =========================
-   GAMEPAD
+   INPUT (GAMEPAD)
 ========================= */
 
-function getPad(){
-const pads=navigator.getGamepads();
-return pads ? pads[0] : null;
+function pad(){
+const p=navigator.getGamepads();
+return p ? p[0] : null;
 }
 
 function dz(v){
@@ -111,17 +112,30 @@ return Math.abs(v)<0.15?0:v;
 }
 
 /* =========================
+   COLLISION
+========================= */
+
+function isSolid(x,y){
+x=Math.floor(x);
+y=Math.floor(y);
+
+if(x<0||y<0||x>=MAP||y>=MAP) return true;
+
+return world[y][x]==="🪨";
+}
+
+/* =========================
    UPDATE PLAYER
 ========================= */
 
-function updatePlayer(){
+function update(){
 
-const pad=getPad();
-if(!pad) return;
+const p=pad();
+if(!p) return;
 
-let lx=dz(pad.axes[0]);
-let ly=dz(pad.axes[1]);
-let rx=dz(pad.axes[2]);
+let lx=dz(p.axes[0]);
+let ly=dz(p.axes[1]);
+let rx=dz(p.axes[2]);
 
 lx=Math.sign(lx)*(lx*lx);
 ly=Math.sign(ly)*(ly*ly);
@@ -129,9 +143,10 @@ rx=Math.sign(rx)*(rx*rx);
 
 player.a += rx*0.05;
 
-const accel=pad.buttons[5].pressed?0.01:0.006;
+const accel=p.buttons[5].pressed?0.01:0.006;
 const friction=0.8;
 
+/* movement */
 player.vx += Math.cos(player.a)*(-ly)*accel;
 player.vy += Math.sin(player.a)*(-ly)*accel;
 
@@ -141,18 +156,33 @@ player.vy += Math.sin(player.a+Math.PI/2)*lx*accel;
 player.vx*=friction;
 player.vy*=friction;
 
-player.x+=player.vx;
-player.y+=player.vy;
+let nx=player.x+player.vx;
+let ny=player.y+player.vy;
+
+/* collision */
+if(!isSolid(nx,player.y)) player.x=nx;
+else player.vx*=0.2;
+
+if(!isSolid(player.x,ny)) player.y=ny;
+else player.vy*=0.2;
 
 }
 
 /* =========================
-   VOXEL RENDER (FAKE 3D HEIGHT)
+   WIND + PLANT GLOW
+========================= */
+
+function plantGlow(t,x,y){
+return Math.sin(t*0.003 + x*2 + y*2)*0.5+0.5;
+}
+
+/* =========================
+   RENDER WORLD
 ========================= */
 
 function render(){
 
-/* SKY */
+/* SKY (Mars tone) */
 let sky=ctx.createLinearGradient(0,0,0,canvas.height/2);
 sky.addColorStop(0,"#2b0a3d");
 sky.addColorStop(1,"#ff4a2f");
@@ -161,14 +191,19 @@ ctx.fillStyle=sky;
 ctx.fillRect(0,0,canvas.width,canvas.height/2);
 
 /* SUN */
-let sunX=canvas.width*0.5+(player.x-30)*10;
+let sunX=canvas.width*0.5+(player.x-20)*12;
 
-ctx.fillStyle="rgba(255,80,30,0.9)";
+ctx.fillStyle="rgba(255,80,30,0.95)";
 ctx.beginPath();
 ctx.arc(sunX,canvas.height*0.2,60,0,Math.PI*2);
 ctx.fill();
 
-/* GROUND BASE */
+ctx.fillStyle="rgba(255,120,40,0.25)";
+ctx.beginPath();
+ctx.arc(sunX,canvas.height*0.2,120,0,Math.PI*2);
+ctx.fill();
+
+/* GROUND */
 let ground=ctx.createLinearGradient(0,canvas.height/2,0,canvas.height);
 ground.addColorStop(0,"#c89a62");
 ground.addColorStop(1,"#7a5530");
@@ -176,10 +211,10 @@ ground.addColorStop(1,"#7a5530");
 ctx.fillStyle=ground;
 ctx.fillRect(0,canvas.height/2,canvas.width,canvas.height/2);
 
-/* =========================
-   DRAW BLOCKS AS HEIGHT STACKS
-========================= */
+/* WIND */
+let wind=Math.sin(Date.now()*0.002)*0.4;
 
+/* DRAW GRID */
 for(let y=0;y<MAP;y++){
 for(let x=0;x<MAP;x++){
 
@@ -189,7 +224,7 @@ let dx=x-player.x;
 let dy=y-player.y;
 let dist=Math.sqrt(dx*dx+dy*dy);
 
-if(dist>25) continue;
+if(dist>18) continue;
 
 /* angle */
 let angle=Math.atan2(dy,dx)-player.a;
@@ -199,45 +234,55 @@ while(angle>Math.PI) angle-=Math.PI*2;
 
 if(Math.abs(angle)>1.2) continue;
 
-/* screen position */
+/* screen */
 let screenX=(canvas.width/2)+Math.tan(angle)*(canvas.width/2);
 
-/* fake depth */
-let size=canvas.height/(dist*1.2);
+let size=canvas.height/(dist*1.4);
 
-/* height system */
-let height=0;
-if(tile===1) height=0.6;   // rock
-if(tile===2) height=1.2;   // plant
+/* base position */
+let baseY=(canvas.height/2)+size*0.2;
 
-/* color */
-let r=200,g=160,b=100;
+/* PLANTS (🌿 glowing + sway) */
+if(tile==="🌿"){
 
-if(tile===1){ r=140; g=120; b=90; }
-if(tile===2){ r=80; g=255; b=180; }
+let sway=wind*10;
 
-/* fog */
-let fog=Math.max(0.15,1-dist/25);
+let glow=plantGlow(Date.now(),x,y);
 
-ctx.globalAlpha=fog;
+ctx.globalAlpha=0.5+glow*0.5;
 
-/* draw block (stack illusion) */
-ctx.fillStyle=`rgb(${r},${g},${b})`;
+ctx.fillStyle="rgba(120,255,180,1)";
 
-ctx.fillRect(
-screenX-size/2,
-(canvas.height/2)-(size*height),
-size,
-size*height
+ctx.fillText(
+"🌿",
+screenX+sway,
+baseY-size
 );
 
 ctx.globalAlpha=1;
+continue;
+}
+
+/* ROCKS (🪨 solid, no sway) */
+if(tile==="🪨"){
+
+ctx.globalAlpha=0.9;
+
+ctx.fillText(
+"🪨",
+screenX,
+baseY-size
+);
+
+ctx.globalAlpha=1;
+continue;
+}
 
 }
 }
 
-/* fog overlay */
-ctx.fillStyle="rgba(255,120,120,0.05)";
+/* fog */
+ctx.fillStyle="rgba(255,120,120,0.06)";
 ctx.fillRect(0,0,canvas.width,canvas.height);
 
 }
@@ -248,12 +293,12 @@ ctx.fillRect(0,0,canvas.width,canvas.height);
 
 function loop(){
 
-updatePlayer();
+update();
 render();
 
 document.getElementById("ui").innerHTML=
 `
-🪨 VOXEL MARS<br>
+🪐 EMOJI MARS WORLD<br>
 X:${player.x.toFixed(1)} Y:${player.y.toFixed(1)}
 `;
 
