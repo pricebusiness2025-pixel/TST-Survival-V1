@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Emoji Mars Breeze World</title>
+<title>Mars Grounded Emoji World</title>
 
 <style>
 body{
@@ -51,9 +51,9 @@ canvas.height=window.innerHeight;
 const MAP=40;
 
 /*
-🪨 rock = solid
-🌿 plant = passable + glowing sway
 ⬛ sand = empty
+🪨 rock = solid
+🌿 plant = passable + glow + sway
 */
 
 let world=[];
@@ -99,7 +99,7 @@ a:0
 };
 
 /* =========================
-   INPUT (GAMEPAD)
+   INPUT
 ========================= */
 
 function pad(){
@@ -116,6 +116,7 @@ return Math.abs(v)<0.15?0:v;
 ========================= */
 
 function isSolid(x,y){
+
 x=Math.floor(x);
 y=Math.floor(y);
 
@@ -169,20 +170,12 @@ else player.vy*=0.2;
 }
 
 /* =========================
-   WIND + PLANT GLOW
-========================= */
-
-function plantGlow(t,x,y){
-return Math.sin(t*0.003 + x*2 + y*2)*0.5+0.5;
-}
-
-/* =========================
    RENDER WORLD
 ========================= */
 
 function render(){
 
-/* SKY (Mars tone) */
+/* SKY */
 let sky=ctx.createLinearGradient(0,0,0,canvas.height/2);
 sky.addColorStop(0,"#2b0a3d");
 sky.addColorStop(1,"#ff4a2f");
@@ -190,8 +183,8 @@ sky.addColorStop(1,"#ff4a2f");
 ctx.fillStyle=sky;
 ctx.fillRect(0,0,canvas.width,canvas.height/2);
 
-/* SUN */
-let sunX=canvas.width*0.5+(player.x-20)*12;
+/* SUN (anchored + drifting) */
+let sunX=canvas.width*0.5+(player.x-20)*10;
 
 ctx.fillStyle="rgba(255,80,30,0.95)";
 ctx.beginPath();
@@ -204,17 +197,28 @@ ctx.arc(sunX,canvas.height*0.2,120,0,Math.PI*2);
 ctx.fill();
 
 /* GROUND */
-let ground=ctx.createLinearGradient(0,canvas.height/2,0,canvas.height);
+let ground=ctx.createLinearGradient(
+0,canvas.height/2,
+0,canvas.height
+);
+
 ground.addColorStop(0,"#c89a62");
 ground.addColorStop(1,"#7a5530");
 
 ctx.fillStyle=ground;
 ctx.fillRect(0,canvas.height/2,canvas.width,canvas.height/2);
 
+/* FOG */
+ctx.fillStyle="rgba(255,120,120,0.05)";
+ctx.fillRect(0,0,canvas.width,canvas.height);
+
 /* WIND */
 let wind=Math.sin(Date.now()*0.002)*0.4;
 
-/* DRAW GRID */
+/* =========================
+   DRAW WORLD OBJECTS
+========================= */
+
 for(let y=0;y<MAP;y++){
 for(let x=0;x<MAP;x++){
 
@@ -234,44 +238,49 @@ while(angle>Math.PI) angle-=Math.PI*2;
 
 if(Math.abs(angle)>1.2) continue;
 
-/* screen */
+/* screen position */
 let screenX=(canvas.width/2)+Math.tan(angle)*(canvas.width/2);
 
-let size=canvas.height/(dist*1.4);
+/* perspective scale (FIXED) */
+let size=canvas.height/(dist*1.1);
 
-/* base position */
-let baseY=(canvas.height/2)+size*0.2;
+/* horizon anchor */
+let horizon=canvas.height*0.58;
+let groundY=horizon+size;
 
-/* PLANTS (🌿 glowing + sway) */
-if(tile==="🌿"){
-
+/* wind sway for plants */
 let sway=wind*10;
 
-let glow=plantGlow(Date.now(),x,y);
+/* PLANTS */
+if(tile==="🌿"){
 
-ctx.globalAlpha=0.5+glow*0.5;
+let glow=Math.sin(Date.now()*0.003 + x + y)*0.5+0.5;
 
-ctx.fillStyle="rgba(120,255,180,1)";
+ctx.globalAlpha=0.4+glow*0.6;
+
+ctx.font=`${size}px Arial`;
 
 ctx.fillText(
 "🌿",
 screenX+sway,
-baseY-size
+groundY
 );
 
 ctx.globalAlpha=1;
 continue;
 }
 
-/* ROCKS (🪨 solid, no sway) */
+/* ROCKS */
 if(tile==="🪨"){
 
 ctx.globalAlpha=0.9;
 
+ctx.font=`${size}px Arial`;
+
 ctx.fillText(
 "🪨",
 screenX,
-baseY-size
+groundY
 );
 
 ctx.globalAlpha=1;
@@ -280,10 +289,6 @@ continue;
 
 }
 }
-
-/* fog */
-ctx.fillStyle="rgba(255,120,120,0.06)";
-ctx.fillRect(0,0,canvas.width,canvas.height);
 
 }
 
@@ -298,7 +303,7 @@ render();
 
 document.getElementById("ui").innerHTML=
 `
-🪐 EMOJI MARS WORLD<br>
+🪐 MARS SURFACE (GROUNDED)<br>
 X:${player.x.toFixed(1)} Y:${player.y.toFixed(1)}
 `;
 
