@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Mars Crash Site FPS</title>
+<title>Mars Surface Atmosphere FPS</title>
 
 <style>
 body{
@@ -48,23 +48,17 @@ canvas.width=window.innerWidth;
 canvas.height=window.innerHeight;
 
 /* =========================
-   WORLD TYPES
+   WORLD
 ========================= */
 
 const MAP=50;
 let world=[];
 
 /*
-0 = empty
-1 = structure
-2 = ruins
-3 = steampunk
-4 = overgrowth
+0 = empty sand
+1 = rock
+2 = glowing plant
 */
-
-/* =========================
-   WORLD GEN
-========================= */
 
 function generateWorld(){
 
@@ -73,30 +67,17 @@ world[y]=[];
 
 for(let x=0;x<MAP;x++){
 
-if(x===0||y===0||x===MAP-1||y===MAP-1){
-world[y][x]=1;
-}
-
-else if(x%7===0||y%7===0){
-world[y][x]=0;
-}
-
-else{
-
 let r=Math.random();
 
-if(r<0.55) world[y][x]=1;
-else if(r<0.75) world[y][x]=2;
-else if(r<0.9) world[y][x]=3;
-else world[y][x]=4;
+if(r<0.75) world[y][x]=0;      // sand
+else if(r<0.92) world[y][x]=1; // rock
+else world[y][x]=2;           // glow plant
 
 }
 
 }
 
-}
-
-/* 🛸 CRASH SITE (SAFE ZONE) */
+/* crash site safe zone */
 for(let y=6;y<16;y++){
 for(let x=6;x<16;x++){
 world[y][x]=0;
@@ -133,23 +114,7 @@ return Math.abs(v)<0.15?0:v;
 }
 
 /* =========================
-   ZONE SYSTEM
-========================= */
-
-function getZone(x,y){
-
-let dx=x-10;
-let dy=y-10;
-let dist=Math.sqrt(dx*dx+dy*dy);
-
-if(dist<6) return "safe";
-if(dist<18) return "normal";
-return "dead";
-
-}
-
-/* =========================
-   WALL
+   WALL CHECK
 ========================= */
 
 function wall(x,y){
@@ -176,15 +141,12 @@ let lx=dz(pad.axes[0]);
 let ly=dz(pad.axes[1]);
 let rx=dz(pad.axes[2]);
 
-/* analog curve */
 lx=Math.sign(lx)*(lx*lx);
 ly=Math.sign(ly)*(ly*ly);
 rx=Math.sign(rx)*(rx*rx);
 
-/* camera */
 player.a += rx*0.06;
 
-/* movement */
 const accel=pad.buttons[5].pressed?0.008:0.005;
 const friction=0.72;
 
@@ -197,7 +159,6 @@ player.vy += Math.sin(player.a+Math.PI/2)*lx*accel;
 player.vx*=friction;
 player.vy*=friction;
 
-/* clamp */
 let sp=Math.hypot(player.vx,player.vy);
 let max=pad.buttons[5].pressed?0.16:0.1;
 
@@ -206,7 +167,6 @@ player.vx=(player.vx/sp)*max;
 player.vy=(player.vy/sp)*max;
 }
 
-/* move */
 let nx=player.x+player.vx;
 let ny=player.y+player.vy;
 
@@ -223,16 +183,13 @@ player.y=ny;
 }
 
 /* =========================
-   RENDER WORLD
+   RENDER WORLD (MARS LIGHT)
 ========================= */
 
 function renderWorld(){
 
-/* 🌌 MARS SKY */
-let sky=ctx.createLinearGradient(
-0,0,0,canvas.height/2
-);
-
+/* 🌌 SKY (purple → pink Mars haze) */
+let sky=ctx.createLinearGradient(0,0,0,canvas.height/2);
 sky.addColorStop(0,"#2b0a3d");
 sky.addColorStop(0.5,"#7a1b5e");
 sky.addColorStop(1,"#ff4fa3");
@@ -240,19 +197,34 @@ sky.addColorStop(1,"#ff4fa3");
 ctx.fillStyle=sky;
 ctx.fillRect(0,0,canvas.width,canvas.height/2);
 
-/* ☀️ SUN */
-ctx.fillStyle="rgba(255,120,180,0.9)";
+/* ☀️ RED-ORANGE SUN */
+let sunX = canvas.width*0.5 + (player.x-10)*25;
+
+ctx.fillStyle="rgba(255,80,40,0.95)";
 ctx.beginPath();
-ctx.arc(canvas.width*0.75,canvas.height*0.2,60,0,Math.PI*2);
+ctx.arc(sunX,canvas.height*0.2,65,0,Math.PI*2);
 ctx.fill();
 
-ctx.fillStyle="rgba(255,80,160,0.25)";
+ctx.fillStyle="rgba(255,120,40,0.25)";
 ctx.beginPath();
-ctx.arc(canvas.width*0.75,canvas.height*0.2,120,0,Math.PI*2);
+ctx.arc(sunX,canvas.height*0.2,130,0,Math.PI*2);
 ctx.fill();
 
-/* 🌋 GROUND */
-ctx.fillStyle="#3a0f12";
+ctx.fillStyle="rgba(255,60,0,0.12)";
+ctx.beginPath();
+ctx.arc(sunX,canvas.height*0.2,200,0,Math.PI*2);
+ctx.fill();
+
+/* 🏜 SAND GROUND */
+let ground=ctx.createLinearGradient(
+0,canvas.height/2,
+0,canvas.height
+);
+
+ground.addColorStop(0,"#b88e5a");
+ground.addColorStop(1,"#7a5a33");
+
+ctx.fillStyle=ground;
 ctx.fillRect(0,canvas.height/2,canvas.width,canvas.height/2);
 
 const FOV=Math.PI/3;
@@ -287,29 +259,38 @@ wallType=world[wy][wx];
 }
 
 let corrected=dist*Math.cos(ray-player.a);
-let h=canvas.height/(corrected+0.2);
 
-/* base tone */
-let shade=140-corrected*12;
+/* lighting */
+let shade=150-corrected*11;
 if(shade<30) shade=30;
 
-/* Mars tint */
-let r=shade,g=shade,b=shade;
+/* mars tint */
+let r=shade*1.2;
+let g=shade*0.9;
+let b=shade*0.6;
 
-if(wallType===2){ r*=0.8; g*=0.8; b*=0.85; }
-if(wallType===3){ r*=1.2; g*=0.9; b*=0.6; }
-if(wallType===4){ r*=0.7; g*=1.1; b*=0.7; }
+/* rock + plant variation */
+if(wallType===1){
+r*=0.9; g*=0.8; b*=0.7;
+}
+if(wallType===2){
+r*=0.6; g*=1.2; b*=0.8;
+}
 
 ctx.fillStyle=`rgb(${r},${g},${b})`;
 
 ctx.fillRect(
 x,
-(canvas.height/2)-(h/2),
+(canvas.height/2)-(canvas.height/(corrected+0.2))/2,
 10,
-h
+canvas.height/(corrected+0.2)
 );
 
 }
+
+/* 🌫 FOG LAYER */
+ctx.fillStyle="rgba(255,120,160,0.06)";
+ctx.fillRect(0,0,canvas.width,canvas.height);
 
 }
 
@@ -317,16 +298,20 @@ h
    LOOP
 ========================= */
 
-function loop(){
+function update(){
 
 updatePlayer();
-renderWorld();
 
-let zone=getZone(player.x,player.y);
+}
+
+function loop(){
+
+update();
+renderWorld();
 
 document.getElementById("ui").innerHTML=
 `
-🛸 ZONE: ${zone.toUpperCase()}<br>
+🪐 MARS SURFACE<br>
 X:${player.x.toFixed(1)} Y:${player.y.toFixed(1)}
 `;
 
