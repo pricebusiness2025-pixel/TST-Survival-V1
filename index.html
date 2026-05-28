@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Ruined City FPS Physics Build</title>
+<title>Optimized Ruined City FPS</title>
 
 <style>
 body{
@@ -13,6 +13,7 @@ background:black;
 
 canvas{
 display:block;
+image-rendering:pixelated;
 }
 
 #ui{
@@ -36,6 +37,10 @@ line-height:1.5;
 
 <script>
 
+/* =========================================
+   CANVAS
+========================================= */
+
 const canvas=document.getElementById("game");
 const ctx=canvas.getContext("2d");
 
@@ -57,7 +62,7 @@ world[y]=[];
 
 for(let x=0;x<MAP;x++){
 
-/* outer border */
+/* border walls */
 if(
 x===0||
 y===0||
@@ -67,7 +72,7 @@ y===MAP-1
 world[y][x]=1;
 }
 
-/* streets */
+/* city streets */
 else if(
 x%7===0||
 y%7===0
@@ -88,7 +93,7 @@ world[y][x]=0;
 
 }
 
-/* safe spawn */
+/* spawn zone */
 for(let y=8;y<14;y++){
 for(let x=8;x<14;x++){
 world[y][x]=0;
@@ -110,7 +115,6 @@ y:10,
 
 a:0,
 
-/* physics velocity */
 vx:0,
 vy:0
 
@@ -137,7 +141,7 @@ return Math.abs(v)<0.15 ? 0 : v;
 }
 
 /* =========================================
-   WALL CHECK
+   WALL
 ========================================= */
 
 function wall(x,y){
@@ -168,25 +172,17 @@ const pad=getPad();
 
 if(!pad) return;
 
-/* =========================
-   STICKS
-========================= */
-
+/* left stick */
 const lx=dz(pad.axes[0]);
 const ly=dz(pad.axes[1]);
 
+/* right stick */
 const rx=dz(pad.axes[2]);
 
-/* =========================
-   CAMERA
-========================= */
-
+/* camera */
 player.a += rx*0.065;
 
-/* =========================
-   MOVEMENT PHYSICS
-========================= */
-
+/* movement physics */
 const accel=
 pad.buttons[5].pressed
 ?0.025
@@ -216,7 +212,7 @@ player.vy *= friction;
 let nx=player.x+player.vx;
 let ny=player.y+player.vy;
 
-/* player body radius */
+/* collision radius */
 const radius=0.2;
 
 /* X collision */
@@ -244,24 +240,13 @@ player.vy*=0.3;
 }
 
 /* =========================================
-   RENDER
+   OPTIMIZED RENDER
 ========================================= */
 
 function render(){
 
 /* sky */
-let sky=
-ctx.createLinearGradient(
-0,
-0,
-0,
-canvas.height/2
-);
-
-sky.addColorStop(0,"#29384d");
-sky.addColorStop(1,"#4f6b8a");
-
-ctx.fillStyle=sky;
+ctx.fillStyle="#425d7a";
 ctx.fillRect(
 0,
 0,
@@ -270,18 +255,7 @@ canvas.height/2
 );
 
 /* ground */
-let floor=
-ctx.createLinearGradient(
-0,
-canvas.height/2,
-0,
-canvas.height
-);
-
-floor.addColorStop(0,"#404040");
-floor.addColorStop(1,"#1f1f1f");
-
-ctx.fillStyle=floor;
+ctx.fillStyle="#2d2d2d";
 ctx.fillRect(
 0,
 canvas.height/2,
@@ -289,20 +263,11 @@ canvas.width,
 canvas.height/2
 );
 
-/* fog */
-ctx.fillStyle="rgba(0,0,0,0.12)";
-ctx.fillRect(
-0,
-0,
-canvas.width,
-canvas.height
-);
-
 /* field of view */
 const FOV=Math.PI/3;
 
-/* raycast */
-for(let x=0;x<canvas.width;x+=4){
+/* optimized raycasting */
+for(let x=0;x<canvas.width;x+=8){
 
 let ray=
 (player.a-FOV/2)+
@@ -311,9 +276,10 @@ let ray=
 let dist=0;
 let hit=false;
 
-while(!hit && dist<20){
+/* optimized stepping */
+while(!hit && dist<16){
 
-dist+=0.04;
+dist+=0.08;
 
 let rx=
 player.x+
@@ -329,55 +295,32 @@ hit=true;
 
 }
 
-/* fisheye fix */
+/* fisheye correction */
 let corrected=
 dist*Math.cos(ray-player.a);
 
 /* wall height */
 let h=
 canvas.height/
-(corrected+0.15);
+(corrected+0.2);
 
 /* shading */
 let shade=
-190-corrected*8;
+170-corrected*10;
 
-if(shade<35){
-shade=35;
+if(shade<30){
+shade=30;
 }
 
-/* texture illusion */
-let tex=
-Math.sin(corrected*8)*15;
-
-let r=shade+tex;
-let g=shade+tex;
-let b=shade+tex+10;
-
 ctx.fillStyle=
-`rgb(${r},${g},${b})`;
+`rgb(${shade},${shade},${shade+8})`;
 
 ctx.fillRect(
 x,
 (canvas.height/2)-(h/2),
-4,
+8,
 h
 );
-
-/* fake cracks */
-if(h>120){
-
-ctx.fillStyle=
-"rgba(0,0,0,0.18)";
-
-ctx.fillRect(
-x+1,
-(canvas.height/2)-(h/2),
-1,
-h
-);
-
-}
 
 }
 
@@ -402,11 +345,7 @@ RB = SPRINT<br><br>
 
 📍 POSITION<br>
 X: ${player.x.toFixed(1)}<br>
-Y: ${player.y.toFixed(1)}<br><br>
-
-⚙ VELOCITY<br>
-VX: ${player.vx.toFixed(2)}<br>
-VY: ${player.vy.toFixed(2)}
+Y: ${player.y.toFixed(1)}
 `;
 
 requestAnimationFrame(loop);
