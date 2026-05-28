@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Grounded Ruined City FPS</title>
+<title>Ruined City FPS - Analog Tuned</title>
 
 <style>
 body{
@@ -93,7 +93,7 @@ world[y][x]=0;
 
 }
 
-/* spawn area */
+/* safe spawn */
 for(let y=8;y<14;y++){
 for(let x=8;x<14;x++){
 world[y][x]=0;
@@ -172,13 +172,23 @@ const pad=getPad();
 
 if(!pad) return;
 
-/* sticks */
-const lx=dz(pad.axes[0]);
-const ly=dz(pad.axes[1]);
+/* =========================================
+   ANALOG INPUT
+========================================= */
 
-const rx=dz(pad.axes[2]);
+let lx=dz(pad.axes[0]);
+let ly=dz(pad.axes[1]);
+let rx=dz(pad.axes[2]);
 
-/* camera */
+/* analog response curve */
+lx=Math.sign(lx)*(lx*lx);
+ly=Math.sign(ly)*(ly*ly);
+rx=Math.sign(rx)*(rx*rx);
+
+/* =========================================
+   CAMERA
+========================================= */
+
 player.a += rx*0.065;
 
 /* =========================================
@@ -187,8 +197,8 @@ player.a += rx*0.065;
 
 const accel=
 pad.buttons[5].pressed
-?0.014
-:0.010;
+?0.008
+:0.005;
 
 const friction=0.72;
 
@@ -235,7 +245,7 @@ player.vy=
 let nx=player.x+player.vx;
 let ny=player.y+player.vy;
 
-/* player radius */
+/* collision radius */
 const radius=0.2;
 
 /* X collision */
