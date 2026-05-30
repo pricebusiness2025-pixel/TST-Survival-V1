@@ -1,29 +1,53 @@
 <!DOCTYPE html>
 <html>
-<body style="margin:0;background:black;">
+<body style="margin:0;background:black;overflow:hidden;">
 <canvas id="c"></canvas>
 
 <script>
 const c = document.getElementById("c");
 const ctx = c.getContext("2d");
 
+let ready = false;
+let name = "SURVIVOR";
+
+/* SAFE INIT */
+function init(){
+try{
 c.width = window.innerWidth;
 c.height = window.innerHeight;
 
-const name = prompt("NAME?") || "SURVIVOR";
+name = prompt("NAME?") || "SURVIVOR";
 
-function loop() {
-  ctx.fillStyle = "black";
-  ctx.fillRect(0,0,c.width,c.height);
+ready = true;
 
-  ctx.fillStyle = "lime";
-  ctx.font = "24px monospace";
-  ctx.fillText("HELLO " + name, 50, 50);
-
-  requestAnimationFrame(loop);
+}catch(e){
+ready = true; // still force run
+}
 }
 
+/* SAFE RENDER LOOP */
+function loop(){
+
+ctx.fillStyle = "black";
+ctx.fillRect(0,0,c.width,c.height);
+
+/* ALWAYS SAFE OUTPUT */
+ctx.fillStyle = "lime";
+ctx.font = "20px monospace";
+
+if(!ready){
+ctx.fillText("BOOTING...",50,50);
+}else{
+ctx.fillText("HELLO " + name,50,50);
+}
+
+requestAnimationFrame(loop);
+}
+
+/* START */
+init();
 loop();
+
 </script>
 </body>
 </html>
