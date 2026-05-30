@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Device Survival Engine v1</title>
+<title>Device Survival Engine v3.1</title>
 
 <style>
 body {
@@ -59,7 +59,7 @@ font-size:18px;
 <canvas id="c"></canvas>
 <div id="ui"></div>
 <div id="device"></div>
-<div id="boot">BOOTING DEVICE</div>
+<div id="boot">BOOTING DEVICE...</div>
 
 <script>
 
@@ -80,7 +80,7 @@ window.addEventListener("resize", resize);
 ctx.font = "16px monospace";
 
 /* =========================
-   GAME STATE (IMPORTANT FIX)
+   GAME STATE
 ========================= */
 
 const STATE = {
@@ -92,7 +92,7 @@ const STATE = {
 let gameState = STATE.BOOT;
 
 /* =========================
-   PLAYER / SAVE
+   SAVE / PLAYER CARD
 ========================= */
 
 let card = JSON.parse(localStorage.getItem("card") || "null");
@@ -100,15 +100,13 @@ let card = JSON.parse(localStorage.getItem("card") || "null");
 if(!card){
   let name = prompt("INSERT SURVIVAL CARD NAME");
   card = {
-    name: name || "UNKNOWN",
-    hunger: 100,
-    health: 100,
-    scrap: 0,
-    x: 10,
-    y: 10,
-    unlocked: {
-      revolver:false
-    }
+    name:name || "UNKNOWN",
+    hunger:100,
+    health:100,
+    scrap:0,
+    x:10,
+    y:10,
+    unlocked:{revolver:false}
   };
   localStorage.setItem("card", JSON.stringify(card));
 }
@@ -123,7 +121,7 @@ let world = [];
 for(let y=0;y<SIZE;y++){
   world[y]=[];
   for(let x=0;x<SIZE;x++){
-    let r = Math.random();
+    let r=Math.random();
     world[y][x] =
       r<0.7?"."
       :r<0.85?"F"
@@ -146,10 +144,7 @@ let keys = {};
 
 window.addEventListener("keydown",e=>{
   keys[e.code]=true;
-
-  if(e.code==="KeyE"){
-    toggleDevice();
-  }
+  if(e.code==="KeyE") toggleDevice();
 });
 
 window.addEventListener("keyup",e=>{
@@ -157,11 +152,15 @@ window.addEventListener("keyup",e=>{
 });
 
 /* =========================
-   DEVICE
+   DEVICE MENU
 ========================= */
 
 let deviceIndex = 0;
 const deviceMenu = ["GPS","INVENTORY","CRAFT","STATUS"];
+
+/* =========================
+   DEVICE TOGGLE
+========================= */
 
 function toggleDevice(){
   if(gameState === STATE.BOOT) return;
@@ -177,101 +176,82 @@ function toggleDevice(){
 }
 
 /* =========================
-   GAMEPAD
+   🎮 FIXED INPUT SYSTEM (KEY + CONTROLLER)
 ========================= */
 
-function pad(){
-  return navigator.getGamepads ? navigator.getGamepads()[0] : null;
+function getInputVector(){
+
+let x=0,y=0;
+
+/* KEYBOARD */
+if(keys["ArrowUp"]) y -= 1;
+if(keys["ArrowDown"]) y += 1;
+if(keys["ArrowLeft"]) x -= 1;
+if(keys["ArrowRight"]) x += 1;
+
+/* CONTROLLER */
+let gp = navigator.getGamepads ? navigator.getGamepads()[0] : null;
+
+if(gp){
+
+// D-PAD
+if(gp.buttons[12]?.pressed) y -= 1;
+if(gp.buttons[13]?.pressed) y += 1;
+if(gp.buttons[14]?.pressed) x -= 1;
+if(gp.buttons[15]?.pressed) x += 1;
+
+// ANALOG STICK (WITH DEADZONE FIX)
+let ax = gp.axes[0] || 0;
+let ay = gp.axes[1] || 0;
+
+if(Math.abs(ax) > 0.25) x += ax;
+if(Math.abs(ay) > 0.25) y += ay;
+
 }
 
-let lock=false;
-function press(fn){
-  if(lock) return;
-  lock=true;
-  fn();
-  setTimeout(()=>lock=false,120);
-}
-
-/* =========================
-   UPDATE GAMEPAD
-========================= */
-
-function updateGamepad(){
-  let gp = pad();
-  if(!gp) return;
-
-  let up = gp.buttons[12]?.pressed;
-  let down = gp.buttons[13]?.pressed;
-  let A = gp.buttons[0]?.pressed;
-  let B = gp.buttons[1]?.pressed;
-  let START = gp.buttons[9]?.pressed;
-
-  if(START) press(toggleDevice);
-
-  if(gameState === STATE.PLAY){
-
-    if(up) card.y -= 0.1;
-    if(down) card.y += 0.1;
-
-  }
-
-  if(gameState === STATE.DEVICE){
-
-    if(up) press(()=>deviceIndex--);
-    if(down) press(()=>deviceIndex++);
-    if(A) press(onSelect);
-    if(B) press(toggleDevice);
-
-  }
+return {x,y};
 }
 
 /* =========================
-   DEVICE ACTIONS
+   MOVEMENT (FIXED SINGLE SOURCE)
 ========================= */
 
-function onSelect(){
-  let m = deviceMenu[deviceIndex % deviceMenu.length];
+function updateMovement(){
 
-  if(m==="STATUS"){
-    alert(`Hunger:${card.hunger.toFixed(1)} Health:${card.health}`);
-  }
+if(gameState !== STATE.PLAY) return;
 
-  if(m==="CRAFT"){
-    if(card.scrap>=3){
-      card.unlocked.revolver=true;
-      alert("Revolver unlocked");
-    } else {
-      alert("Need scrap");
-    }
-  }
+let input = getInputVector();
+
+/* normalize diagonal speed */
+let len = Math.hypot(input.x,input.y);
+if(len > 1){
+input.x /= len;
+input.y /= len;
+}
+
+card.x += input.x * 0.12;
+card.y += input.y * 0.12;
+
 }
 
 /* =========================
-   WORLD UPDATE
+   LOOT + SURVIVAL
 ========================= */
 
-function update(){
+function updateWorld(){
 
 if(gameState !== STATE.PLAY) return;
 
 card.hunger -= 0.01;
 
-/* movement keyboard */
-if(keys["ArrowUp"]) card.y -= 0.1;
-if(keys["ArrowDown"]) card.y += 0.1;
-if(keys["ArrowLeft"]) card.x -= 0.1;
-if(keys["ArrowRight"]) card.x += 0.1;
-
-/* reveal map */
 let x = Math.floor(card.x);
 let y = Math.floor(card.y);
 
 if(seen[y]) seen[y][x]=true;
 
-/* loot */
 if(world[y]?.[x]==="L"){
-  world[y][x]=".";
-  card.scrap++;
+world[y][x]=".";
+card.scrap++;
 }
 
 }
@@ -316,7 +296,7 @@ ctx.fillText("@",c.width/2,c.height/2);
 }
 
 /* =========================
-   DEVICE RENDER
+   DEVICE UI
 ========================= */
 
 function renderDevice(){
@@ -325,6 +305,7 @@ let d = document.getElementById("device");
 
 d.innerHTML = `
 <h2>DEVICE SURVIVAL INDEX</h2>
+
 <p>USER: ${card.name}</p>
 <p>HUNGER: ${card.hunger.toFixed(1)}</p>
 <p>SCRAP: ${card.scrap}</p>
@@ -341,11 +322,13 @@ ${deviceMenu.map((m,i)=>
 
 <h3>GPS</h3>
 <pre>${generateGPS()}</pre>
+
+<p>Press E or START (controller)</p>
 `;
 }
 
 /* =========================
-   GPS
+   GPS MODULE
 ========================= */
 
 function generateGPS(){
@@ -376,25 +359,65 @@ return out;
 }
 
 /* =========================
-   BOOT SEQUENCE (FIXED)
+   GAMEPAD (FIXED + CLEAN)
 ========================= */
 
-let bootTimer = 0;
+function pad(){
+  return navigator.getGamepads ? navigator.getGamepads()[0] : null;
+}
+
+let lock=false;
+function press(fn){
+  if(lock) return;
+  lock=true;
+  fn();
+  setTimeout(()=>lock=false,120);
+}
+
+function updateGamepad(){
+
+let gp = pad();
+if(!gp) return;
+
+let up = gp.buttons[12]?.pressed;
+let down = gp.buttons[13]?.pressed;
+let A = gp.buttons[0]?.pressed;
+let B = gp.buttons[1]?.pressed;
+let START = gp.buttons[9]?.pressed;
+
+/* START DEVICE */
+if(START) press(toggleDevice);
+
+if(gameState === STATE.DEVICE){
+
+if(up) press(()=>deviceIndex--);
+if(down) press(()=>deviceIndex++);
+if(A) press(()=>alert(deviceMenu[deviceIndex%deviceMenu.length]));
+if(B) press(toggleDevice);
+
+}
+
+}
+
+/* =========================
+   BOOT FIXED
+========================= */
+
+let bootCount=0;
 
 function boot(){
 
-let b = document.getElementById("boot");
+let b=document.getElementById("boot");
 
-let t = setInterval(()=>{
+let t=setInterval(()=>{
 
-bootTimer++;
+bootCount++;
+b.innerText="BOOTING DEVICE"+ ".".repeat(bootCount%4);
 
-b.innerText = "BOOTING DEVICE" + ".".repeat(bootTimer%4);
-
-if(bootTimer > 10){
+if(bootCount>10){
 clearInterval(t);
 b.style.display="none";
-gameState = STATE.PLAY;
+gameState=STATE.PLAY;
 }
 
 },200);
@@ -404,23 +427,24 @@ gameState = STATE.PLAY;
 boot();
 
 /* =========================
-   MAIN LOOP (CLEAN)
+   LOOP (CLEAN ORDER)
 ========================= */
 
 function loop(){
 
-update();
+updateMovement();
+updateWorld();
 updateGamepad();
 
-if(gameState === STATE.PLAY){
+if(gameState===STATE.PLAY){
 renderWorld();
 }
 
-if(gameState === STATE.DEVICE){
+if(gameState===STATE.DEVICE){
 renderDevice();
 }
 
-document.getElementById("ui").innerText =
+document.getElementById("ui").innerText=
 `STATE:${gameState} | SCRAP:${card.scrap}`;
 
 requestAnimationFrame(loop);
