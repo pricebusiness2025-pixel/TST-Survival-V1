@@ -2,54 +2,29 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Device Survival Engine v3.1</title>
+<title>Device Survival Index v5</title>
 
 <style>
-body {
-margin:0;
-background:#000;
-overflow:hidden;
-font-family:monospace;
-color:#00ffcc;
-}
+body { margin:0; background:#000; overflow:hidden; font-family:monospace; color:#00ffcc; }
+canvas { display:block; background:#000; }
 
-canvas {
-display:block;
-background:#000;
-}
-
-#ui {
-position:absolute;
-bottom:10px;
-left:10px;
-color:#fff;
-font-size:12px;
-}
-
-#device {
-position:absolute;
-top:0;
-left:0;
-width:100%;
-height:100%;
-background:rgba(0,0,0,0.92);
-display:none;
-padding:20px;
+#device{
+position:absolute; top:0; left:0; width:100%; height:100%;
+background:rgba(0,0,0,0.93);
+display:none; padding:16px;
 box-sizing:border-box;
+color:#00ffcc;
 }
 
-#boot {
-position:absolute;
-top:0;
-left:0;
-width:100%;
-height:100%;
-background:#000;
-color:#00ffcc;
-display:flex;
-align-items:center;
-justify-content:center;
-font-size:18px;
+#ui{
+position:absolute; bottom:10px; left:10px;
+font-size:12px; color:#888;
+}
+
+#boot{
+position:absolute; top:0; left:0; width:100%; height:100%;
+display:flex; align-items:center; justify-content:center;
+background:#000; color:#00ffcc;
 }
 </style>
 </head>
@@ -67,232 +42,290 @@ font-size:18px;
    CANVAS
 ========================= */
 
-const c = document.getElementById("c");
-const ctx = c.getContext("2d");
+const c=document.getElementById("c");
+const ctx=c.getContext("2d");
+ctx.font="16px monospace";
 
 function resize(){
-  c.width = window.innerWidth;
-  c.height = window.innerHeight;
+c.width=innerWidth;
+c.height=innerHeight;
 }
 resize();
-window.addEventListener("resize", resize);
-
-ctx.font = "16px monospace";
+addEventListener("resize",resize);
 
 /* =========================
-   GAME STATE
+   STATE
 ========================= */
 
-const STATE = {
-  BOOT: "boot",
-  PLAY: "play",
-  DEVICE: "device"
-};
-
-let gameState = STATE.BOOT;
+const STATE={PLAY:"play",DEVICE:"device"};
+let state=STATE.PLAY;
 
 /* =========================
-   SAVE / PLAYER CARD
+   PLAYER
 ========================= */
 
-let card = JSON.parse(localStorage.getItem("card") || "null");
+let card=JSON.parse(localStorage.getItem("card")||"null");
 
 if(!card){
-  let name = prompt("INSERT SURVIVAL CARD NAME");
-  card = {
-    name:name || "UNKNOWN",
-    hunger:100,
-    health:100,
-    scrap:0,
-    x:10,
-    y:10,
-    unlocked:{revolver:false}
-  };
-  localStorage.setItem("card", JSON.stringify(card));
+card={
+name:prompt("NAME?")||"UNKNOWN",
+x:10,y:10,
+health:100,
+hunger:100,
+scrap:0,
+inventory:{wood:0,hardWood:0,scrap:0,parts:0,coal:0},
+weapon:{durability:100,max:100}
+};
 }
 
 /* =========================
    WORLD
 ========================= */
 
-const SIZE = 25;
-let world = [];
+const SIZE=28;
+let world=Array.from({length:SIZE},()=>Array(SIZE).fill("."));
 
 for(let y=0;y<SIZE;y++){
-  world[y]=[];
-  for(let x=0;x<SIZE;x++){
-    let r=Math.random();
-    world[y][x] =
-      r<0.7?"."
-      :r<0.85?"F"
-      :r<0.95?"L"
-      :"R";
-  }
+for(let x=0;x<SIZE;x++){
+let r=Math.random();
+world[y][x]=r<0.7?".":r<0.85?"F":r<0.95?"L":"R";
+}
 }
 
 /* =========================
-   VISIBILITY MAP
+   VISIBILITY
 ========================= */
 
-let seen = Array.from({length:SIZE},()=>Array(SIZE).fill(false));
+let seen=Array.from({length:SIZE},()=>Array(SIZE).fill(false));
 
 /* =========================
    INPUT
 ========================= */
 
-let keys = {};
+let keys={};
 
-window.addEventListener("keydown",e=>{
-  keys[e.code]=true;
-  if(e.code==="KeyE") toggleDevice();
+addEventListener("keydown",e=>{
+keys[e.code]=true;
+if(e.code==="KeyE") toggleDevice();
 });
-
-window.addEventListener("keyup",e=>{
-  keys[e.code]=false;
-});
+addEventListener("keyup",e=>keys[e.code]=false);
 
 /* =========================
-   DEVICE MENU
+   CAMPFIRE
 ========================= */
 
-let deviceIndex = 0;
-const deviceMenu = ["GPS","INVENTORY","CRAFT","STATUS"];
+let campfires=[];
 
 /* =========================
-   DEVICE TOGGLE
+   ENEMIES
 ========================= */
 
-function toggleDevice(){
-  if(gameState === STATE.BOOT) return;
-
-  if(gameState === STATE.DEVICE){
-    gameState = STATE.PLAY;
-    document.getElementById("device").style.display="none";
-  } else {
-    gameState = STATE.DEVICE;
-    document.getElementById("device").style.display="block";
-    renderDevice();
-  }
+function spawnWolf(){
+return {hp:60,def:5,atk:10};
 }
 
 /* =========================
-   🎮 FIXED INPUT SYSTEM (KEY + CONTROLLER)
+   D20
 ========================= */
 
-function getInputVector(){
+function d20(){
+return Math.floor(Math.random()*20)+1;
+}
 
+/* =========================
+   FIRE / SAFE ZONE
+========================= */
+
+function nearFire(x,y){
+
+for(let i of campfires){
+if(Math.hypot(i.x-x,i.y-y)<4) return true;
+}
+return false;
+}
+
+/* =========================
+   MOVEMENT INPUT
+========================= */
+
+function input(){
 let x=0,y=0;
 
-/* KEYBOARD */
-if(keys["ArrowUp"]) y -= 1;
-if(keys["ArrowDown"]) y += 1;
-if(keys["ArrowLeft"]) x -= 1;
-if(keys["ArrowRight"]) x += 1;
+if(keys["ArrowUp"]) y--;
+if(keys["ArrowDown"]) y++;
+if(keys["ArrowLeft"]) x--;
+if(keys["ArrowRight"]) x++;
 
-/* CONTROLLER */
-let gp = navigator.getGamepads ? navigator.getGamepads()[0] : null;
-
+let gp=navigator.getGamepads?.()[0];
 if(gp){
+let ax=gp.axes[0]||0;
+let ay=gp.axes[1]||0;
+if(Math.abs(ax)>0.25) x+=ax;
+if(Math.abs(ay)>0.25) y+=ay;
 
-// D-PAD
-if(gp.buttons[12]?.pressed) y -= 1;
-if(gp.buttons[13]?.pressed) y += 1;
-if(gp.buttons[14]?.pressed) x -= 1;
-if(gp.buttons[15]?.pressed) x += 1;
-
-// ANALOG STICK (WITH DEADZONE FIX)
-let ax = gp.axes[0] || 0;
-let ay = gp.axes[1] || 0;
-
-if(Math.abs(ax) > 0.25) x += ax;
-if(Math.abs(ay) > 0.25) y += ay;
-
+if(gp.buttons[12]?.pressed) y--;
+if(gp.buttons[13]?.pressed) y++;
+if(gp.buttons[14]?.pressed) x--;
+if(gp.buttons[15]?.pressed) x++;
 }
+
+let l=Math.hypot(x,y);
+if(l>1){x/=l;y/=l;}
 
 return {x,y};
 }
 
 /* =========================
-   MOVEMENT (FIXED SINGLE SOURCE)
+   COMBAT
 ========================= */
 
-function updateMovement(){
+function combat(enemy){
 
-if(gameState !== STATE.PLAY) return;
+let roll=d20();
+let dmg=25;
 
-let input = getInputVector();
+let result=roll+dmg-enemy.def;
 
-/* normalize diagonal speed */
-let len = Math.hypot(input.x,input.y);
-if(len > 1){
-input.x /= len;
-input.y /= len;
+card.weapon.durability-=5;
+
+if(roll<=5){card.health-=10;return"MISS";}
+if(roll>=18){enemy.hp-=40;return"CRIT";}
+
+if(result>20){enemy.hp-=25;return"HIT";}
+
+enemy.hp-=10;
+card.health-=5;
+return"GLANCE";
 }
 
-card.x += input.x * 0.12;
-card.y += input.y * 0.12;
+/* =========================
+   UPDATE
+========================= */
+
+function update(){
+
+if(state!==STATE.PLAY) return;
+
+let i=input();
+
+card.x+=i.x*0.12;
+card.y+=i.y*0.12;
+
+/* hunger */
+card.hunger-=0.01;
+
+/* visibility */
+seen[Math.floor(card.y)][Math.floor(card.x)]=true;
+
+/* loot */
+let t=world[Math.floor(card.y)][Math.floor(card.x)];
+
+if(t==="L"){
+world[Math.floor(card.y)][Math.floor(card.x)]=".";
+
+let r=Math.random();
+
+if(r<0.3)card.inventory.wood++;
+else if(r<0.55)card.inventory.hardWood++;
+else if(r<0.8)card.inventory.scrap++;
+else if(r<0.95)card.inventory.parts++;
+else card.inventory.coal++;
+}
+
+/* CAMPFIRE HEAL */
+if(nearFire(card.x,card.y)){
+card.hunger+=0.03;
+card.health+=0.01;
+}
+
+/* RANDOM WILDLIFE (F zone) */
+if(t==="F" && !nearFire(card.x,card.y) && Math.random()<0.01){
+combat(spawnWolf());
+}
+
+/* clamp */
+card.x=Math.max(0,Math.min(SIZE-1,card.x));
+card.y=Math.max(0,Math.min(SIZE-1,card.y));
 
 }
 
 /* =========================
-   LOOT + SURVIVAL
+   CAMPFIRE UPDATE
 ========================= */
 
-function updateWorld(){
+function updateCampfires(){
 
-if(gameState !== STATE.PLAY) return;
+for(let c of campfires){
+c.fuel-=0.02;
 
-card.hunger -= 0.01;
-
-let x = Math.floor(card.x);
-let y = Math.floor(card.y);
-
-if(seen[y]) seen[y][x]=true;
-
-if(world[y]?.[x]==="L"){
-world[y][x]=".";
-card.scrap++;
+if(c.fuel<=0){
+world[c.y][c.x]=".";
+}
 }
 
 }
 
 /* =========================
-   RENDER WORLD
+   RENDER
 ========================= */
 
-function renderWorld(){
+function color(t){
+return t==="F"?"#2ecc71":
+t==="L"?"#f1c40f":
+t==="R"?"#7f8c8d":"#111";
+}
+
+function render(){
 
 ctx.fillStyle="#000";
 ctx.fillRect(0,0,c.width,c.height);
 
-let size=18;
+let s=18;
 
 for(let y=0;y<SIZE;y++){
 for(let x=0;x<SIZE;x++){
 
-if(!seen[y][x]) continue;
+if(!seen[y][x])continue;
 
-let dx = x - card.x;
-let dy = y - card.y;
+let dx=x-card.x;
+let dy=y-card.y;
 
-let sx = c.width/2 + dx*size;
-let sy = c.height/2 + dy*size;
+let sx=c.width/2+dx*s;
+let sy=c.height/2+dy*s;
 
-let t = world[y][x];
+let t=world[y][x];
 
-ctx.fillStyle =
-t==="F"?"#0a3":
-t==="L"?"#aa0":
-t==="R"?"#555":"#111";
-
+if(t==="F"){
+ctx.shadowBlur=10;
+ctx.shadowColor="#ff6a00";
+ctx.fillStyle="#ff3b1f";
+ctx.fillText("≋",sx,sy);
+ctx.shadowBlur=0;
+}else{
+ctx.fillStyle=color(t);
 ctx.fillText(t,sx,sy);
+}
 
 }
 }
 
-ctx.fillStyle="#0f0";
+ctx.fillStyle="#00ffcc";
 ctx.fillText("@",c.width/2,c.height/2);
 
+}
+
+/* =========================
+   DEVICE
+========================= */
+
+let device=false;
+let menu=0;
+const items=["GPS","INVENTORY","CRAFT","CARD","EXIT"];
+
+function toggleDevice(){
+device=!device;
+document.getElementById("device").style.display=device?"block":"none";
+if(device) renderDevice();
 }
 
 /* =========================
@@ -301,158 +334,58 @@ ctx.fillText("@",c.width/2,c.height/2);
 
 function renderDevice(){
 
-let d = document.getElementById("device");
+document.getElementById("device").innerHTML=`
+<h2>DEVICE</h2>
 
-d.innerHTML = `
-<h2>DEVICE SURVIVAL INDEX</h2>
-
-<p>USER: ${card.name}</p>
-<p>HUNGER: ${card.hunger.toFixed(1)}</p>
-<p>SCRAP: ${card.scrap}</p>
+<p>${card.name}</p>
+<p>H:${card.health.toFixed(1)} HUN:${card.hunger.toFixed(1)}</p>
 
 <hr>
 
-<h3>MENU</h3>
-
-${deviceMenu.map((m,i)=>
-(i===deviceIndex?"> ":"  ")+m
-).join("<br>")}
+${items.map((m,i)=> (i===menu?"> ":"")+m).join("<br>")}
 
 <hr>
 
-<h3>GPS</h3>
-<pre>${generateGPS()}</pre>
+<p>SCRAP:${card.inventory.scrap} COAL:${card.inventory.coal}</p>
 
-<p>Press E or START (controller)</p>
+<p>CAMPFIRES:${campfires.length}</p>
+<p>${nearFire(card.x,card.y)?"🔥 SAFE":"⚠ WILD"}</p>
 `;
 }
 
 /* =========================
-   GPS MODULE
-========================= */
-
-function generateGPS(){
-
-let out="┌── GPS ──┐\n";
-
-for(let y=0;y<6;y++){
-let row="│ ";
-
-for(let x=0;x<10;x++){
-
-let wx = Math.floor(card.x)+x-5;
-let wy = Math.floor(card.y)+y-3;
-
-if(wx===Math.floor(card.x)&&wy===Math.floor(card.y)) row+="P ";
-else if(world[wy]?.[wx]==="F") row+="F ";
-else if(world[wy]?.[wx]==="L") row+="L ";
-else if(world[wy]?.[wx]==="R") row+="▓ ";
-else row+="? ";
-
-}
-
-out+=row+"│\n";
-}
-
-out+="└────────┘";
-return out;
-}
-
-/* =========================
-   GAMEPAD (FIXED + CLEAN)
-========================= */
-
-function pad(){
-  return navigator.getGamepads ? navigator.getGamepads()[0] : null;
-}
-
-let lock=false;
-function press(fn){
-  if(lock) return;
-  lock=true;
-  fn();
-  setTimeout(()=>lock=false,120);
-}
-
-function updateGamepad(){
-
-let gp = pad();
-if(!gp) return;
-
-let up = gp.buttons[12]?.pressed;
-let down = gp.buttons[13]?.pressed;
-let A = gp.buttons[0]?.pressed;
-let B = gp.buttons[1]?.pressed;
-let START = gp.buttons[9]?.pressed;
-
-/* START DEVICE */
-if(START) press(toggleDevice);
-
-if(gameState === STATE.DEVICE){
-
-if(up) press(()=>deviceIndex--);
-if(down) press(()=>deviceIndex++);
-if(A) press(()=>alert(deviceMenu[deviceIndex%deviceMenu.length]));
-if(B) press(toggleDevice);
-
-}
-
-}
-
-/* =========================
-   BOOT FIXED
-========================= */
-
-let bootCount=0;
-
-function boot(){
-
-let b=document.getElementById("boot");
-
-let t=setInterval(()=>{
-
-bootCount++;
-b.innerText="BOOTING DEVICE"+ ".".repeat(bootCount%4);
-
-if(bootCount>10){
-clearInterval(t);
-b.style.display="none";
-gameState=STATE.PLAY;
-}
-
-},200);
-
-}
-
-boot();
-
-/* =========================
-   LOOP (CLEAN ORDER)
+   LOOP
 ========================= */
 
 function loop(){
 
-updateMovement();
-updateWorld();
-updateGamepad();
+update();
+updateCampfires();
 
-if(gameState===STATE.PLAY){
-renderWorld();
-}
-
-if(gameState===STATE.DEVICE){
-renderDevice();
-}
-
-document.getElementById("ui").innerText=
-`STATE:${gameState} | SCRAP:${card.scrap}`;
+if(state===STATE.PLAY) render();
+if(state===STATE.DEVICE) renderDevice();
 
 requestAnimationFrame(loop);
 }
 
+/* =========================
+   BOOT
+========================= */
+
+let b=0;
+let boot=document.getElementById("boot");
+
+let t=setInterval(()=>{
+b++;
+boot.innerText="BOOTING DEVICE"+ ".".repeat(b%4);
+if(b>10){
+clearInterval(t);
+boot.style.display="none";
 loop();
+}
+},200);
 
 </script>
 
 </body>
-</html>
+   </html>
