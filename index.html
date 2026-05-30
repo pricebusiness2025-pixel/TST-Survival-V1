@@ -2,170 +2,236 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Mars Grounded Emoji World</title>
-
+<title>Device Survival Index v3</title>
 <style>
-body{
-margin:0;
-overflow:hidden;
+body { margin:0; background:#000; overflow:hidden; font-family:monospace; color:#00ffcc; }
+canvas { display:block; background:#000; }
+#device {
+position:absolute; top:0; left:0; width:100%; height:100%;
+background:rgba(0,0,0,0.92);
+display:none;
+padding:20px;
+box-sizing:border-box;
+}
+#boot {
+position:absolute; top:0; left:0; width:100%; height:100%;
 background:black;
-}
-
-canvas{
-display:block;
-}
-
-#ui{
-position:absolute;
-top:10px;
-left:10px;
-color:white;
-font-family:monospace;
-background:rgba(0,0,0,0.4);
-padding:10px;
+color:#00ffcc;
+display:flex;
+align-items:center;
+justify-content:center;
+font-size:18px;
 }
 </style>
 </head>
 
 <body>
 
-<canvas id="game"></canvas>
-<div id="ui"></div>
+<canvas id="c"></canvas>
+<div id="device"></div>
+<div id="boot">BOOTING DEVICE...</div>
 
 <script>
 
 /* =========================
-   CANVAS
+   SETUP
 ========================= */
 
-const canvas=document.getElementById("game");
-const ctx=canvas.getContext("2d");
+const c = document.getElementById("c");
+const ctx = c.getContext("2d");
 
-canvas.width=window.innerWidth;
-canvas.height=window.innerHeight;
+c.width = window.innerWidth;
+c.height = window.innerHeight;
+
+/* =========================
+   SAVE / CARD
+========================= */
+
+let card = JSON.parse(localStorage.getItem("card") || "null");
+
+if(!card){
+  let name = prompt("INSERT SURVIVAL CARD - NAME?");
+  card = {
+    name:name || "UNKNOWN",
+    hunger:100,
+    health:100,
+    scrap:0,
+    unlocked:{revolver:false},
+    x:10,y:10
+  };
+  localStorage.setItem("card", JSON.stringify(card));
+}
 
 /* =========================
    WORLD
 ========================= */
 
-const MAP=40;
+const SIZE = 25;
+let world = [];
 
-/*
-⬛ sand = empty
-🪨 rock = solid
-🌿 plant = passable + glow + sway
-*/
-
-let world=[];
-
-function generateWorld(){
-
-for(let y=0;y<MAP;y++){
-world[y]=[];
-
-for(let x=0;x<MAP;x++){
-
-let r=Math.random();
-
-if(r<0.78) world[y][x]="⬛";
-else if(r<0.90) world[y][x]="🪨";
-else world[y][x]="🌿";
-
+for(let y=0;y<SIZE;y++){
+  world[y]=[];
+  for(let x=0;x<SIZE;x++){
+    let r = Math.random();
+    world[y][x] =
+      r<0.7?"."
+      :r<0.85?"F"
+      :r<0.95?"L"
+      :"R";
+  }
 }
 
-}
+/* F forest, L loot, R rock */
 
-/* crash site safe zone */
-for(let y=14;y<20;y++){
-for(let x=14;x<20;x++){
-world[y][x]="⬛";
-}
-}
+/* =========================
+   GPS MEMORY
+========================= */
 
-}
-
-generateWorld();
+let seen = Array.from({length:SIZE},()=>Array(SIZE).fill(false));
 
 /* =========================
    PLAYER
 ========================= */
 
-let player={
-x:20,
-y:20,
-vx:0,
-vy:0,
-a:0
-};
+let p = card;
 
 /* =========================
-   INPUT
+   INPUT (KEY + CONTROLLER)
 ========================= */
 
-function pad(){
-const p=navigator.getGamepads();
-return p ? p[0] : null;
-}
-
-function dz(v){
-return Math.abs(v)<0.15?0:v;
-}
+let keys = {};
+window.addEventListener("keydown",e=>{
+  keys[e.code]=true;
+  if(e.code==="KeyE") toggleDevice();
+});
+window.addEventListener("keyup",e=>keys[e.code]=false);
 
 /* =========================
-   COLLISION
+   DEVICE
 ========================= */
 
-function isSolid(x,y){
+let deviceOpen = false;
+let menuIndex = 0;
 
-x=Math.floor(x);
-y=Math.floor(y);
+const menu = [
+"GPS NAV",
+"INVENTORY",
+"CRAFTING",
+"STATUS"
+];
 
-if(x<0||y<0||x>=MAP||y>=MAP) return true;
-
-return world[y][x]==="🪨";
+function toggleDevice(){
+  deviceOpen = !deviceOpen;
+  document.getElementById("device").style.display = deviceOpen ? "block":"none";
+  renderDevice();
 }
 
 /* =========================
-   UPDATE PLAYER
+   GAMEPAD SUPPORT
+========================= */
+
+function getPad(){
+  return navigator.getGamepads ? navigator.getGamepads()[0] : null;
+}
+
+let lock=false;
+
+function press(fn){
+  if(lock) return;
+  lock=true;
+  fn();
+  setTimeout(()=>lock=false,120);
+}
+
+function updateGamepad(){
+  let gp = getPad();
+  if(!gp) return;
+
+  let up = gp.buttons[12]?.pressed;
+  let down = gp.buttons[13]?.pressed;
+  let A = gp.buttons[0]?.pressed;
+  let B = gp.buttons[1]?.pressed;
+  let START = gp.buttons[9]?.pressed;
+
+  if(START) press(toggleDevice);
+
+  if(!deviceOpen){
+    if(up) p.y -= 0.1;
+    if(down) p.y += 0.1;
+  } else {
+    if(up) press(()=>menuIndex--);
+    if(down) press(()=>menuIndex++);
+    if(A) press(selectMenu);
+    if(B) press(toggleDevice);
+  }
+}
+
+/* =========================
+   MENU ACTIONS
+========================= */
+
+function selectMenu(){
+  let item = menu[menuIndex % menu.length];
+
+  if(item==="STATUS"){
+    alert(`Hunger:${card.hunger} Health:${card.health}`);
+  }
+
+  if(item==="INVENTORY"){
+    alert(`Scrap:${card.scrap}`);
+  }
+
+  if(item==="CRAFTING"){
+    if(card.scrap>=3){
+      card.unlocked.revolver=true;
+      alert("Revolver knowledge unlocked");
+    } else {
+      alert("Need scrap");
+    }
+  }
+}
+
+/* =========================
+   D20 SYSTEM
+========================= */
+
+function d20(){
+  return Math.floor(Math.random()*20)+1;
+}
+
+/* =========================
+   UPDATE WORLD
 ========================= */
 
 function update(){
 
-const p=pad();
-if(!p) return;
+if(deviceOpen) return;
 
-let lx=dz(p.axes[0]);
-let ly=dz(p.axes[1]);
-let rx=dz(p.axes[2]);
+let sp = 0.12;
 
-lx=Math.sign(lx)*(lx*lx);
-ly=Math.sign(ly)*(ly*ly);
-rx=Math.sign(rx)*(rx*rx);
+if(keys["ArrowUp"]) p.y-=sp;
+if(keys["ArrowDown"]) p.y+=sp;
+if(keys["ArrowLeft"]) p.x-=sp;
+if(keys["ArrowRight"]) p.x+=sp;
 
-player.a += rx*0.05;
+/* hunger */
+card.hunger -= 0.01;
 
-const accel=p.buttons[5].pressed?0.01:0.006;
-const friction=0.8;
+/* reveal */
+seen[Math.floor(p.y)]?.[Math.floor(p.x)] = true;
 
-/* movement */
-player.vx += Math.cos(player.a)*(-ly)*accel;
-player.vy += Math.sin(player.a)*(-ly)*accel;
+/* loot */
+let x = Math.floor(p.x);
+let y = Math.floor(p.y);
 
-player.vx += Math.cos(player.a+Math.PI/2)*lx*accel;
-player.vy += Math.sin(player.a+Math.PI/2)*lx*accel;
+if(world[y]?.[x]==="L"){
+  world[y][x]=".";
+  card.scrap += 1;
 
-player.vx*=friction;
-player.vy*=friction;
-
-let nx=player.x+player.vx;
-let ny=player.y+player.vy;
-
-/* collision */
-if(!isSolid(nx,player.y)) player.x=nx;
-else player.vx*=0.2;
-
-if(!isSolid(player.x,ny)) player.y=ny;
-else player.vy*=0.2;
+  if(Math.random()>0.7){
+    card.unlocked.revolver=true;
+  }
+}
 
 }
 
@@ -175,122 +241,111 @@ else player.vy*=0.2;
 
 function render(){
 
-/* SKY */
-let sky=ctx.createLinearGradient(0,0,0,canvas.height/2);
-sky.addColorStop(0,"#2b0a3d");
-sky.addColorStop(1,"#ff4a2f");
+ctx.fillStyle="#000";
+ctx.fillRect(0,0,c.width,c.height);
 
-ctx.fillStyle=sky;
-ctx.fillRect(0,0,canvas.width,canvas.height/2);
+let size=18;
 
-/* SUN (anchored + drifting) */
-let sunX=canvas.width*0.5+(player.x-20)*10;
+for(let y=0;y<SIZE;y++){
+for(let x=0;x<SIZE;x++){
 
-ctx.fillStyle="rgba(255,80,30,0.95)";
-ctx.beginPath();
-ctx.arc(sunX,canvas.height*0.2,60,0,Math.PI*2);
-ctx.fill();
+if(!seen[y][x]) continue;
 
-ctx.fillStyle="rgba(255,120,40,0.25)";
-ctx.beginPath();
-ctx.arc(sunX,canvas.height*0.2,120,0,Math.PI*2);
-ctx.fill();
+let dx=x-p.x;
+let dy=y-p.y;
 
-/* GROUND */
-let ground=ctx.createLinearGradient(
-0,canvas.height/2,
-0,canvas.height
-);
+let sx=c.width/2+dx*size;
+let sy=c.height/2+dy*size;
 
-ground.addColorStop(0,"#c89a62");
-ground.addColorStop(1,"#7a5530");
+let t=world[y][x];
 
-ctx.fillStyle=ground;
-ctx.fillRect(0,canvas.height/2,canvas.width,canvas.height/2);
+ctx.fillStyle =
+t==="F"?"#0a3":
+t==="L"?"#aa0":
+t==="R"?"#555":"#111";
 
-/* FOG */
-ctx.fillStyle="rgba(255,120,120,0.05)";
-ctx.fillRect(0,0,canvas.width,canvas.height);
+ctx.fillText(t,sx,sy);
 
-/* WIND */
-let wind=Math.sin(Date.now()*0.002)*0.4;
+}
+}
+
+ctx.fillStyle="#0f0";
+ctx.fillText("@",c.width/2,c.height/2);
+
+}
 
 /* =========================
-   DRAW WORLD OBJECTS
+   DEVICE UI
 ========================= */
 
-for(let y=0;y<MAP;y++){
-for(let x=0;x<MAP;x++){
+function renderDevice(){
 
-let tile=world[y][x];
+let d=document.getElementById("device");
 
-let dx=x-player.x;
-let dy=y-player.y;
-let dist=Math.sqrt(dx*dx+dy*dy);
+let gps = generateGPS();
 
-if(dist>18) continue;
+d.innerHTML=`
+<h2>DEVICE SURVIVAL INDEX</h2>
+<p>USER: ${card.name}</p>
+<p>HUNGER: ${card.hunger.toFixed(1)}</p>
+<p>HEALTH: ${card.health}</p>
 
-/* angle */
-let angle=Math.atan2(dy,dx)-player.a;
+<hr>
 
-while(angle<-Math.PI) angle+=Math.PI*2;
-while(angle>Math.PI) angle-=Math.PI*2;
+<h3>MENU</h3>
+${menu.map((m,i)=>
+(i===menuIndex?"> ":"  ")+m
+).join("<br>")}
 
-if(Math.abs(angle)>1.2) continue;
+<hr>
 
-/* screen position */
-let screenX=(canvas.width/2)+Math.tan(angle)*(canvas.width/2);
+<h3>GPS MODULE</h3>
+<pre>${gps}</pre>
 
-/* perspective scale (FIXED) */
-let size=canvas.height/(dist*1.1);
+<hr>
 
-/* horizon anchor */
-let horizon=canvas.height*0.58;
-let groundY=horizon+size;
+<p>Scrap: ${card.scrap}</p>
+<p>Revolver: ${card.unlocked.revolver?"YES":"NO"}</p>
 
-/* wind sway for plants */
-let sway=wind*10;
-
-/* PLANTS */
-if(tile==="🌿"){
-
-let glow=Math.sin(Date.now()*0.003 + x + y)*0.5+0.5;
-
-ctx.globalAlpha=0.4+glow*0.6;
-
-ctx.font=`${size}px Arial`;
-
-ctx.fillText(
-"🌿",
-screenX+sway,
-groundY
-);
-
-ctx.globalAlpha=1;
-continue;
+<p>Press START (controller) or E</p>
+`;
 }
 
-/* ROCKS */
-if(tile==="🪨"){
+/* =========================
+   GPS MINI MAP
+========================= */
 
-ctx.globalAlpha=0.9;
+function generateGPS(){
 
-ctx.font=`${size}px Arial`;
+let out="┌──── GPS ────┐\n";
 
-ctx.fillText(
-"🪨",
-screenX,
-groundY
-);
+for(let y=0;y<6;y++){
+let row="│ ";
+for(let x=0;x<12;x++){
 
-ctx.globalAlpha=1;
-continue;
+let wx = Math.floor(p.x)+x-6;
+let wy = Math.floor(p.y)+y-3;
+
+if(wx===Math.floor(p.x) && wy===Math.floor(p.y)) row+="P ";
+else if(world[wy]?.[wx]==="F") row+="F ";
+else if(world[wy]?.[wx]==="L") row+="L ";
+else if(world[wy]?.[wx]==="R") row+="▓ ";
+else row+="? ";
+}
+out+=row+"│\n";
 }
 
-}
+out+="└────────────┘";
+return out;
 }
 
-}
+/* =========================
+   BOOT
+========================= */
+
+setTimeout(()=>{
+document.getElementById("boot").style.display="none";
+},1200);
 
 /* =========================
    LOOP
@@ -299,16 +354,10 @@ continue;
 function loop(){
 
 update();
+updateGamepad();
 render();
 
-document.getElementById("ui").innerHTML=
-`
-🪐 MARS SURFACE (GROUNDED)<br>
-X:${player.x.toFixed(1)} Y:${player.y.toFixed(1)}
-`;
-
 requestAnimationFrame(loop);
-
 }
 
 loop();
