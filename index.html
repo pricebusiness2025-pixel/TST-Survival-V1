@@ -2,20 +2,49 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Device Survival Index v3</title>
+<title>Device Survival Engine v1</title>
+
 <style>
-body { margin:0; background:#000; overflow:hidden; font-family:monospace; color:#00ffcc; }
-canvas { display:block; background:#000; }
+body {
+margin:0;
+background:#000;
+overflow:hidden;
+font-family:monospace;
+color:#00ffcc;
+}
+
+canvas {
+display:block;
+background:#000;
+}
+
+#ui {
+position:absolute;
+bottom:10px;
+left:10px;
+color:#fff;
+font-size:12px;
+}
+
 #device {
-position:absolute; top:0; left:0; width:100%; height:100%;
+position:absolute;
+top:0;
+left:0;
+width:100%;
+height:100%;
 background:rgba(0,0,0,0.92);
 display:none;
 padding:20px;
 box-sizing:border-box;
 }
+
 #boot {
-position:absolute; top:0; left:0; width:100%; height:100%;
-background:black;
+position:absolute;
+top:0;
+left:0;
+width:100%;
+height:100%;
+background:#000;
 color:#00ffcc;
 display:flex;
 align-items:center;
@@ -28,36 +57,58 @@ font-size:18px;
 <body>
 
 <canvas id="c"></canvas>
+<div id="ui"></div>
 <div id="device"></div>
-<div id="boot">BOOTING DEVICE...</div>
+<div id="boot">BOOTING DEVICE</div>
 
 <script>
 
 /* =========================
-   SETUP
+   CANVAS
 ========================= */
 
 const c = document.getElementById("c");
 const ctx = c.getContext("2d");
 
-c.width = window.innerWidth;
-c.height = window.innerHeight;
+function resize(){
+  c.width = window.innerWidth;
+  c.height = window.innerHeight;
+}
+resize();
+window.addEventListener("resize", resize);
+
+ctx.font = "16px monospace";
 
 /* =========================
-   SAVE / CARD
+   GAME STATE (IMPORTANT FIX)
+========================= */
+
+const STATE = {
+  BOOT: "boot",
+  PLAY: "play",
+  DEVICE: "device"
+};
+
+let gameState = STATE.BOOT;
+
+/* =========================
+   PLAYER / SAVE
 ========================= */
 
 let card = JSON.parse(localStorage.getItem("card") || "null");
 
 if(!card){
-  let name = prompt("INSERT SURVIVAL CARD - NAME?");
+  let name = prompt("INSERT SURVIVAL CARD NAME");
   card = {
-    name:name || "UNKNOWN",
-    hunger:100,
-    health:100,
-    scrap:0,
-    unlocked:{revolver:false},
-    x:10,y:10
+    name: name || "UNKNOWN",
+    hunger: 100,
+    health: 100,
+    scrap: 0,
+    x: 10,
+    y: 10,
+    unlocked: {
+      revolver:false
+    }
   };
   localStorage.setItem("card", JSON.stringify(card));
 }
@@ -81,61 +132,59 @@ for(let y=0;y<SIZE;y++){
   }
 }
 
-/* F forest, L loot, R rock */
-
 /* =========================
-   GPS MEMORY
+   VISIBILITY MAP
 ========================= */
 
 let seen = Array.from({length:SIZE},()=>Array(SIZE).fill(false));
 
 /* =========================
-   PLAYER
-========================= */
-
-let p = card;
-
-/* =========================
-   INPUT (KEY + CONTROLLER)
+   INPUT
 ========================= */
 
 let keys = {};
+
 window.addEventListener("keydown",e=>{
   keys[e.code]=true;
-  if(e.code==="KeyE") toggleDevice();
+
+  if(e.code==="KeyE"){
+    toggleDevice();
+  }
 });
-window.addEventListener("keyup",e=>keys[e.code]=false);
+
+window.addEventListener("keyup",e=>{
+  keys[e.code]=false;
+});
 
 /* =========================
    DEVICE
 ========================= */
 
-let deviceOpen = false;
-let menuIndex = 0;
-
-const menu = [
-"GPS NAV",
-"INVENTORY",
-"CRAFTING",
-"STATUS"
-];
+let deviceIndex = 0;
+const deviceMenu = ["GPS","INVENTORY","CRAFT","STATUS"];
 
 function toggleDevice(){
-  deviceOpen = !deviceOpen;
-  document.getElementById("device").style.display = deviceOpen ? "block":"none";
-  renderDevice();
+  if(gameState === STATE.BOOT) return;
+
+  if(gameState === STATE.DEVICE){
+    gameState = STATE.PLAY;
+    document.getElementById("device").style.display="none";
+  } else {
+    gameState = STATE.DEVICE;
+    document.getElementById("device").style.display="block";
+    renderDevice();
+  }
 }
 
 /* =========================
-   GAMEPAD SUPPORT
+   GAMEPAD
 ========================= */
 
-function getPad(){
+function pad(){
   return navigator.getGamepads ? navigator.getGamepads()[0] : null;
 }
 
 let lock=false;
-
 function press(fn){
   if(lock) return;
   lock=true;
@@ -143,8 +192,12 @@ function press(fn){
   setTimeout(()=>lock=false,120);
 }
 
+/* =========================
+   UPDATE GAMEPAD
+========================= */
+
 function updateGamepad(){
-  let gp = getPad();
+  let gp = pad();
   if(!gp) return;
 
   let up = gp.buttons[12]?.pressed;
@@ -155,36 +208,38 @@ function updateGamepad(){
 
   if(START) press(toggleDevice);
 
-  if(!deviceOpen){
-    if(up) p.y -= 0.1;
-    if(down) p.y += 0.1;
-  } else {
-    if(up) press(()=>menuIndex--);
-    if(down) press(()=>menuIndex++);
-    if(A) press(selectMenu);
+  if(gameState === STATE.PLAY){
+
+    if(up) card.y -= 0.1;
+    if(down) card.y += 0.1;
+
+  }
+
+  if(gameState === STATE.DEVICE){
+
+    if(up) press(()=>deviceIndex--);
+    if(down) press(()=>deviceIndex++);
+    if(A) press(onSelect);
     if(B) press(toggleDevice);
+
   }
 }
 
 /* =========================
-   MENU ACTIONS
+   DEVICE ACTIONS
 ========================= */
 
-function selectMenu(){
-  let item = menu[menuIndex % menu.length];
+function onSelect(){
+  let m = deviceMenu[deviceIndex % deviceMenu.length];
 
-  if(item==="STATUS"){
-    alert(`Hunger:${card.hunger} Health:${card.health}`);
+  if(m==="STATUS"){
+    alert(`Hunger:${card.hunger.toFixed(1)} Health:${card.health}`);
   }
 
-  if(item==="INVENTORY"){
-    alert(`Scrap:${card.scrap}`);
-  }
-
-  if(item==="CRAFTING"){
+  if(m==="CRAFT"){
     if(card.scrap>=3){
       card.unlocked.revolver=true;
-      alert("Revolver knowledge unlocked");
+      alert("Revolver unlocked");
     } else {
       alert("Need scrap");
     }
@@ -192,45 +247,31 @@ function selectMenu(){
 }
 
 /* =========================
-   D20 SYSTEM
-========================= */
-
-function d20(){
-  return Math.floor(Math.random()*20)+1;
-}
-
-/* =========================
-   UPDATE WORLD
+   WORLD UPDATE
 ========================= */
 
 function update(){
 
-if(deviceOpen) return;
+if(gameState !== STATE.PLAY) return;
 
-let sp = 0.12;
-
-if(keys["ArrowUp"]) p.y-=sp;
-if(keys["ArrowDown"]) p.y+=sp;
-if(keys["ArrowLeft"]) p.x-=sp;
-if(keys["ArrowRight"]) p.x+=sp;
-
-/* hunger */
 card.hunger -= 0.01;
 
-/* reveal */
-seen[Math.floor(p.y)]?.[Math.floor(p.x)] = true;
+/* movement keyboard */
+if(keys["ArrowUp"]) card.y -= 0.1;
+if(keys["ArrowDown"]) card.y += 0.1;
+if(keys["ArrowLeft"]) card.x -= 0.1;
+if(keys["ArrowRight"]) card.x += 0.1;
+
+/* reveal map */
+let x = Math.floor(card.x);
+let y = Math.floor(card.y);
+
+if(seen[y]) seen[y][x]=true;
 
 /* loot */
-let x = Math.floor(p.x);
-let y = Math.floor(p.y);
-
 if(world[y]?.[x]==="L"){
   world[y][x]=".";
-  card.scrap += 1;
-
-  if(Math.random()>0.7){
-    card.unlocked.revolver=true;
-  }
+  card.scrap++;
 }
 
 }
@@ -239,7 +280,7 @@ if(world[y]?.[x]==="L"){
    RENDER WORLD
 ========================= */
 
-function render(){
+function renderWorld(){
 
 ctx.fillStyle="#000";
 ctx.fillRect(0,0,c.width,c.height);
@@ -251,13 +292,13 @@ for(let x=0;x<SIZE;x++){
 
 if(!seen[y][x]) continue;
 
-let dx=x-p.x;
-let dy=y-p.y;
+let dx = x - card.x;
+let dy = y - card.y;
 
-let sx=c.width/2+dx*size;
-let sy=c.height/2+dy*size;
+let sx = c.width/2 + dx*size;
+let sy = c.height/2 + dy*size;
 
-let t=world[y][x];
+let t = world[y][x];
 
 ctx.fillStyle =
 t==="F"?"#0a3":
@@ -275,87 +316,112 @@ ctx.fillText("@",c.width/2,c.height/2);
 }
 
 /* =========================
-   DEVICE UI
+   DEVICE RENDER
 ========================= */
 
 function renderDevice(){
 
-let d=document.getElementById("device");
+let d = document.getElementById("device");
 
-let gps = generateGPS();
-
-d.innerHTML=`
+d.innerHTML = `
 <h2>DEVICE SURVIVAL INDEX</h2>
 <p>USER: ${card.name}</p>
 <p>HUNGER: ${card.hunger.toFixed(1)}</p>
-<p>HEALTH: ${card.health}</p>
+<p>SCRAP: ${card.scrap}</p>
 
 <hr>
 
 <h3>MENU</h3>
-${menu.map((m,i)=>
-(i===menuIndex?"> ":"  ")+m
+
+${deviceMenu.map((m,i)=>
+(i===deviceIndex?"> ":"  ")+m
 ).join("<br>")}
 
 <hr>
 
-<h3>GPS MODULE</h3>
-<pre>${gps}</pre>
-
-<hr>
-
-<p>Scrap: ${card.scrap}</p>
-<p>Revolver: ${card.unlocked.revolver?"YES":"NO"}</p>
-
-<p>Press START (controller) or E</p>
+<h3>GPS</h3>
+<pre>${generateGPS()}</pre>
 `;
 }
 
 /* =========================
-   GPS MINI MAP
+   GPS
 ========================= */
 
 function generateGPS(){
 
-let out="┌──── GPS ────┐\n";
+let out="┌── GPS ──┐\n";
 
 for(let y=0;y<6;y++){
 let row="│ ";
-for(let x=0;x<12;x++){
 
-let wx = Math.floor(p.x)+x-6;
-let wy = Math.floor(p.y)+y-3;
+for(let x=0;x<10;x++){
 
-if(wx===Math.floor(p.x) && wy===Math.floor(p.y)) row+="P ";
+let wx = Math.floor(card.x)+x-5;
+let wy = Math.floor(card.y)+y-3;
+
+if(wx===Math.floor(card.x)&&wy===Math.floor(card.y)) row+="P ";
 else if(world[wy]?.[wx]==="F") row+="F ";
 else if(world[wy]?.[wx]==="L") row+="L ";
 else if(world[wy]?.[wx]==="R") row+="▓ ";
 else row+="? ";
+
 }
+
 out+=row+"│\n";
 }
 
-out+="└────────────┘";
+out+="└────────┘";
 return out;
 }
 
 /* =========================
-   BOOT
+   BOOT SEQUENCE (FIXED)
 ========================= */
 
-setTimeout(()=>{
-document.getElementById("boot").style.display="none";
-},1200);
+let bootTimer = 0;
+
+function boot(){
+
+let b = document.getElementById("boot");
+
+let t = setInterval(()=>{
+
+bootTimer++;
+
+b.innerText = "BOOTING DEVICE" + ".".repeat(bootTimer%4);
+
+if(bootTimer > 10){
+clearInterval(t);
+b.style.display="none";
+gameState = STATE.PLAY;
+}
+
+},200);
+
+}
+
+boot();
 
 /* =========================
-   LOOP
+   MAIN LOOP (CLEAN)
 ========================= */
 
 function loop(){
 
 update();
 updateGamepad();
-render();
+
+if(gameState === STATE.PLAY){
+renderWorld();
+}
+
+if(gameState === STATE.DEVICE){
+renderDevice();
+}
+
+document.getElementById("ui").innerText =
+`STATE:${gameState} | SCRAP:${card.scrap}`;
 
 requestAnimationFrame(loop);
 }
