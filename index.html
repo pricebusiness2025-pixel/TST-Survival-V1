@@ -2,27 +2,23 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Device Survival v6</title>
+<title>Device Survival v7</title>
 
 <style>
-body { margin:0; background:#000; overflow:hidden; font-family:monospace; }
-canvas { display:block; }
-
-#ui { position:absolute; bottom:10px; left:10px; color:#888; font-size:12px; }
-
-#device {
-position:absolute; top:0; left:0; width:100%; height:100%;
+body{margin:0;background:#000;overflow:hidden;font-family:monospace;}
+canvas{display:block;}
+#ui{position:absolute;bottom:10px;left:10px;color:#888;font-size:12px;}
+#device{
+position:absolute;top:0;left:0;width:100%;height:100%;
 background:rgba(0,0,0,0.95);
 color:#00ffcc;
-padding:15px;
+padding:16px;
 display:none;
-box-sizing:border-box;
 }
-
-#boot {
-position:absolute; top:0; left:0; width:100%; height:100%;
-background:#000; color:#00ffcc;
-display:flex; align-items:center; justify-content:center;
+#boot{
+position:absolute;top:0;left:0;width:100%;height:100%;
+display:flex;align-items:center;justify-content:center;
+background:#000;color:#00ffcc;
 }
 </style>
 </head>
@@ -32,7 +28,7 @@ display:flex; align-items:center; justify-content:center;
 <canvas id="c"></canvas>
 <div id="ui"></div>
 <div id="device"></div>
-<div id="boot">BOOTING DEVICE...</div>
+<div id="boot">BOOTING V7 ENGINE...</div>
 
 <script>
 
@@ -52,11 +48,16 @@ resize();
 addEventListener("resize",resize);
 
 /* =========================
-   STATE
+   ENGINE STATE
 ========================= */
 
-const STATE={PLAY:"play",DEVICE:"device"};
-let state=STATE.PLAY;
+const STATE={
+PLAY:"play",
+COMBAT:"combat",
+DEVICE:"device"
+};
+
+let gameState=STATE.PLAY;
 
 /* =========================
    PLAYER
@@ -93,15 +94,18 @@ world[y][x]=r<0.7?".":r<0.85?"F":r<0.95?"L":"R";
 let seen=Array.from({length:SIZE},()=>Array(SIZE).fill(false));
 
 /* =========================
-   INPUT
+   INPUT (GLOBAL)
 ========================= */
 
 let keys={};
 
 addEventListener("keydown",e=>{
 keys[e.code]=true;
+
 if(e.code==="KeyE") toggleDevice();
+if(e.code==="Space") action();
 });
+
 addEventListener("keyup",e=>keys[e.code]=false);
 
 /* =========================
@@ -113,7 +117,7 @@ return navigator.getGamepads?.()[0];
 }
 
 /* =========================
-   INPUT VECTOR (FIXED)
+   INPUT SYSTEM (NO STATE BLOCKING)
 ========================= */
 
 function input(){
@@ -126,7 +130,7 @@ if(keys["ArrowDown"]) y++;
 if(keys["ArrowLeft"]) x--;
 if(keys["ArrowRight"]) x++;
 
-/* controller ALWAYS */
+/* controller */
 let g=gp();
 if(g){
 
@@ -150,26 +154,19 @@ return {x,y};
 }
 
 /* =========================
-   CAMPFIRE SYSTEM
+   COMBAT SYSTEM
 ========================= */
 
-let fires=[];
+let enemy=null;
 
-function nearFire(x,y){
-return fires.some(f=>Math.hypot(f.x-x,f.y-y)<4);
+function spawnEnemy(){
+enemy={hp:50,def:5};
+gameState=STATE.COMBAT;
 }
-
-/* =========================
-   D20 COMBAT
-========================= */
 
 function d20(){return Math.floor(Math.random()*20)+1;}
 
-function wolf(){
-return {hp:50,def:5};
-}
-
-function combat(enemy){
+function resolveCombat(){
 
 let roll=d20();
 let dmg=20;
@@ -178,52 +175,70 @@ let res=roll+dmg-enemy.def;
 
 card.weapon.durability-=5;
 
-if(roll<=5){card.health-=10;return"MISS";}
-if(roll>=18){enemy.hp-=30;return"CRIT";}
+if(roll<=5) card.health-=10;
+else if(roll>=18) enemy.hp-=30;
+else if(res>20) enemy.hp-=20;
+else enemy.hp-=10;
 
-if(res>20){enemy.hp-=20;return"HIT";}
-
-enemy.hp-=10;
 card.health-=5;
 
-return"GLANCE";
+if(enemy.hp<=0){
+gameState=STATE.PLAY;
+enemy=null;
+card.scrap++;
+}
+
 }
 
 /* =========================
-   UPDATE
+   WORLD LOGIC
+========================= */
+
+function worldLogic(){
+
+let t=world[Math.floor(card.y)][Math.floor(card.x)];
+
+/* loot */
+if(t==="L"){
+world[Math.floor(card.y)][Math.floor(card.x)]=".";
+card.inventory.scrap++;
+}
+
+/* random encounter */
+if(t==="F" && Math.random()<0.008){
+spawnEnemy();
+}
+
+}
+
+/* =========================
+   UPDATE LOOP
 ========================= */
 
 function update(){
 
-if(state!==STATE.PLAY) return;
-
 let i=input();
+
+/* DEVICE ALWAYS AVAILABLE */
+if(keys["KeyE"]) toggleDevice();
+
+/* PLAY MOVEMENT */
+if(gameState===STATE.PLAY){
 
 card.x+=i.x*0.12;
 card.y+=i.y*0.12;
 
 card.hunger-=0.01;
 
-/* reveal */
 seen[Math.floor(card.y)][Math.floor(card.x)]=true;
 
-/* loot */
-let t=world[Math.floor(card.y)][Math.floor(card.x)];
+worldLogic();
 
-if(t==="L"){
-world[Math.floor(card.y)][Math.floor(card.x)]=".";
-card.inventory.scrap++;
 }
 
-/* fire safe zone */
-if(nearFire(card.x,card.y)){
-card.hunger+=0.02;
-card.health+=0.01;
-}
-
-/* wildlife */
-if(t==="F" && !nearFire(card.x,card.y) && Math.random()<0.01){
-combat(wolf());
+/* COMBAT STATE */
+if(gameState===STATE.COMBAT){
+/* no movement */
 }
 
 /* clamp */
@@ -233,7 +248,7 @@ card.y=Math.max(0,Math.min(SIZE-1,card.y));
 }
 
 /* =========================
-   RENDER WORLD
+   RENDER
 ========================= */
 
 function render(){
@@ -262,7 +277,8 @@ ctx.shadowBlur=10;
 ctx.shadowColor="#ff9900";
 ctx.fillText("≋",sx,sy);
 ctx.shadowBlur=0;
-}else{
+}
+else{
 ctx.fillStyle=
 t==="L"?"#f1c40f":
 t==="R"?"#7f8c8d":"#2ecc71";
@@ -276,18 +292,23 @@ ctx.fillText(t,sx,sy);
 ctx.fillStyle="#00ffcc";
 ctx.fillText("@",c.width/2,c.height/2);
 
+/* enemy indicator */
+if(gameState===STATE.COMBAT){
+ctx.fillText("ENEMY",c.width/2,c.height/2-30);
+}
+
 }
 
 /* =========================
    DEVICE
 ========================= */
 
-let stateDevice=false;
+let device=false;
 
 function toggleDevice(){
-stateDevice=!stateDevice;
-state=stateDevice?STATE.DEVICE:STATE.PLAY;
-document.getElementById("device").style.display=stateDevice?"block":"none";
+device=!device;
+gameState=device?STATE.DEVICE:STATE.PLAY;
+document.getElementById("device").style.display=device?"block":"none";
 }
 
 /* =========================
@@ -297,17 +318,32 @@ document.getElementById("device").style.display=stateDevice?"block":"none";
 function deviceUI(){
 
 document.getElementById("device").innerHTML=`
-<h2>DEVICE SURVIVAL</h2>
+<h2>DEVICE V7</h2>
 
 <p>${card.name}</p>
+
 <p>H:${card.health.toFixed(1)} HUN:${card.hunger.toFixed(1)}</p>
 
 <hr>
 
 SCRAP:${card.inventory.scrap} COAL:${card.inventory.coal}
 
-<p>${nearFire(card.x,card.y)?"🔥 SAFE":"⚠ WILD ZONE"}</p>
+<p>STATE:${gameState}</p>
+
+<p>${gameState===STATE.COMBAT?"⚔ COMBAT ACTIVE (SPACE TO ATTACK)":"SAFE"}</p>
 `;
+}
+
+/* =========================
+   ACTION
+========================= */
+
+function action(){
+
+if(gameState===STATE.COMBAT){
+resolveCombat();
+}
+
 }
 
 /* =========================
@@ -318,11 +354,11 @@ function loop(){
 
 update();
 
-if(state===STATE.PLAY) render();
-if(state===STATE.DEVICE) deviceUI();
+if(gameState===STATE.DEVICE) deviceUI();
+render();
 
 document.getElementById("ui").innerText=
-`STATE:${state}`;
+`STATE:${gameState} SCRAP:${card.inventory.scrap}`;
 
 requestAnimationFrame(loop);
 }
@@ -336,7 +372,7 @@ let boot=document.getElementById("boot");
 
 let t=setInterval(()=>{
 b++;
-boot.innerText="BOOTING DEVICE"+ ".".repeat(b%4);
+boot.innerText="BOOTING V7 ENGINE"+ ".".repeat(b%4);
 if(b>10){
 clearInterval(t);
 boot.style.display="none";
