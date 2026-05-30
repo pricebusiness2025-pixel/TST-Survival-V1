@@ -2,18 +2,30 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Survival v7.1 SAFE</title>
+<title>Device Survival V8 FULL</title>
 
 <style>
 body{margin:0;background:#000;overflow:hidden;font-family:monospace;}
 canvas{display:block;}
-#ui{position:absolute;bottom:10px;left:10px;color:#888;font-size:12px;z-index:2;}
+
+#ui{
+position:absolute;
+bottom:10px;
+left:10px;
+color:#888;
+font-size:12px;
+z-index:2;
+}
+
 #device{
-position:absolute;top:0;left:0;width:100%;height:100%;
+position:absolute;
+top:0;left:0;
+width:100%;height:100%;
 background:rgba(0,0,0,0.95);
 color:#00ffcc;
-padding:12px;
+padding:14px;
 display:none;
+overflow:auto;
 z-index:3;
 }
 </style>
@@ -28,29 +40,7 @@ z-index:3;
 <script>
 
 /* =========================
-   SAFE WRAPPER (CRITICAL)
-========================= */
-
-(function(){
-
-"use strict";
-
-/* =========================
-   CANVAS SAFE INIT
-========================= */
-
-const c=document.getElementById("c");
-const ctx=c.getContext("2d");
-
-function resize(){
-c.width=innerWidth||800;
-c.height=innerHeight||600;
-}
-addEventListener("resize",resize);
-resize();
-
-/* =========================
-   STATE SAFE INIT
+   ENGINE CORE
 ========================= */
 
 const STATE={
@@ -62,56 +52,65 @@ COMBAT:"combat"
 let state=STATE.PLAY;
 
 /* =========================
-   PLAYER SAFE INIT
+   PLAYER
 ========================= */
 
 let card={
+name:prompt("NAME?")||"SURVIVOR",
 x:10,y:10,
 health:100,
 hunger:100,
-inventory:{scrap:0}
+inventory:{wood:0,scrap:0,coal:0},
+weapon:{durability:100}
 };
 
 /* =========================
-   WORLD SAFE INIT
+   WORLD
 ========================= */
 
-const SIZE=20;
-let world=[];
+const SIZE=25;
+let world=Array.from({length:SIZE},()=>Array(SIZE).fill("."));
 
 for(let y=0;y<SIZE;y++){
-world[y]=[];
 for(let x=0;x<SIZE;x++){
-world[y][x]=Math.random()<0.8?".":Math.random()<0.9?"L":"F";
+let r=Math.random();
+world[y][x]=r<0.75?".":r<0.9?"L":"F";
 }
 }
 
 /* =========================
-   INPUT SAFE INIT
+   VISIBILITY
+========================= */
+
+let seen=Array.from({length:SIZE},()=>Array(SIZE).fill(false));
+
+/* =========================
+   INPUT
 ========================= */
 
 let keys={};
 
-try{
-addEventListener("keydown",e=>keys[e.code]=true);
-addEventListener("keyup",e=>keys[e.code]=false);
-}catch(e){}
+addEventListener("keydown",e=>{
+keys[e.code]=true;
+});
+
+addEventListener("keyup",e=>{
+keys[e.code]=false;
+});
 
 /* =========================
-   GAMEPAD SAFE (NO CRASH EVER)
+   GAMEPAD SAFE
 ========================= */
 
 function gp(){
 try{
 let g=navigator.getGamepads?.();
-return (g && g[0]) ? g[0] : null;
-}catch(e){
-return null;
-}
+return g?.[0]||null;
+}catch{return null;}
 }
 
 /* =========================
-   INPUT VECTOR SAFE
+   INPUT VECTOR
 ========================= */
 
 function input(){
@@ -124,7 +123,7 @@ if(keys["ArrowDown"]) y++;
 if(keys["ArrowLeft"]) x--;
 if(keys["ArrowRight"]) x++;
 
-/* controller SAFE */
+/* controller */
 let g=gp();
 
 if(g && g.connected){
@@ -149,103 +148,178 @@ return {x,y};
 }
 
 /* =========================
-   DEVICE TOGGLE SAFE
+   CAMPFIRE SYSTEM
 ========================= */
 
-function toggleDevice(){
-try{
-state = (state===STATE.DEVICE) ? STATE.PLAY : STATE.DEVICE;
-document.getElementById("device").style.display =
-(state===STATE.DEVICE) ? "block" : "none";
-}catch(e){}
+let campfires=[];
+
+function nearFire(x,y){
+return campfires.some(c=>Math.hypot(c.x-x,c.y-y)<4);
 }
 
 /* =========================
-   WORLD LOGIC SAFE
+   CRAFTING SYSTEM
+========================= */
+
+const CRAFT=[
+{
+name:"Campfire",
+cost:{wood:2,scrap:1},
+place:true
+},
+{
+name:"Bandage",
+cost:{scrap:1},
+heal:20
+}
+];
+
+/* =========================
+   LEGEND
+========================= */
+
+const LEGEND={
+".":"empty",
+"L":"loot",
+"F":"fire",
+"C":"campfire",
+"R":"rock"
+};
+
+/* =========================
+   DEVICE MENU
+========================= */
+
+const MENU=["LEGEND","CRAFT","STATUS"];
+
+let menuIndex=0;
+
+/* =========================
+   COMBAT
+========================= */
+
+let enemy=null;
+
+function spawnEnemy(){
+enemy={hp:50};
+state=STATE.COMBAT;
+}
+
+function d20(){
+return Math.floor(Math.random()*20)+1;
+}
+
+function attack(){
+
+let roll=d20();
+
+if(roll>=15) enemy.hp-=25;
+else if(roll<=5) card.health-=10;
+else enemy.hp-=10;
+
+card.weapon.durability-=5;
+
+if(enemy.hp<=0){
+enemy=null;
+state=STATE.PLAY;
+card.inventory.scrap++;
+}
+
+}
+
+/* =========================
+   WORLD LOGIC
 ========================= */
 
 function worldLogic(){
 
-try{
-
-let t=world[Math.floor(card.y)]?.[Math.floor(card.x)];
+let t=world[Math.floor(card.y)][Math.floor(card.x)];
 
 if(t==="L"){
 world[Math.floor(card.y)][Math.floor(card.x)]=".";
 card.inventory.scrap++;
 }
 
-if(t==="F" && Math.random()<0.005){
-card.health -= 5;
+if(t==="F" && Math.random()<0.006){
+spawnEnemy();
 }
-
-}catch(e){}
 
 }
 
 /* =========================
-   UPDATE SAFE (NO CRASH EVER)
+   UPDATE
 ========================= */
 
 function update(){
 
-try{
-
 let i=input();
 
-/* device toggle ALWAYS works */
+/* DEVICE TOGGLE */
 if(keys["KeyE"]){
-toggleDevice();
+state = state===STATE.DEVICE?STATE.PLAY:STATE.DEVICE;
 keys["KeyE"]=false;
 }
 
-/* movement only in play */
-if(state===STATE.PLAY){
-card.x += i.x*0.12;
-card.y += i.y*0.12;
+/* DEVICE MENU */
+if(state===STATE.DEVICE){
 
-card.hunger -= 0.01;
+if(keys["ArrowUp"]){menuIndex--;keys["ArrowUp"]=false;}
+if(keys["ArrowDown"]){menuIndex++;keys["ArrowDown"]=false;}
 
-worldLogic();
+menuIndex=Math.max(0,Math.min(MENU.length-1,menuIndex));
 }
 
-/* clamp SAFE */
-card.x=Math.max(0,Math.min(SIZE-1,card.x||0));
-card.y=Math.max(0,Math.min(SIZE-1,card.y||0));
+/* PLAY */
+if(state===STATE.PLAY){
 
-}catch(e){
-/* NEVER BREAK LOOP */
+card.x+=i.x*0.12;
+card.y+=i.y*0.12;
+
+card.hunger-=0.01;
+
+seen[Math.floor(card.y)][Math.floor(card.x)]=true;
+
+worldLogic();
+
+}
+
+/* COMBAT */
+if(state===STATE.COMBAT){
+
+if(keys["Space"]){
+attack();
+keys["Space"]=false;
+}
+
 }
 
 }
 
 /* =========================
-   RENDER SAFE (ALWAYS DRAWS)
+   RENDER WORLD
 ========================= */
 
 function render(){
 
-try{
-
 ctx.fillStyle="#000";
 ctx.fillRect(0,0,c.width,c.height);
 
-ctx.fillStyle="#00ffcc";
-ctx.fillText("@",c.width/2,c.height/2);
+let s=18;
 
 for(let y=0;y<SIZE;y++){
 for(let x=0;x<SIZE;x++){
 
-let t=world[y]?.[x];
-if(!t) continue;
+if(!seen[y][x]) continue;
 
 let dx=x-card.x;
 let dy=y-card.y;
 
-let sx=c.width/2+dx*16;
-let sy=c.height/2+dy*16;
+let sx=c.width/2+dx*s;
+let sy=c.height/2+dy*s;
 
-ctx.fillStyle =
+let t=world[y][x];
+
+ctx.fillStyle=
 t==="L"?"#f1c40f":
 t==="F"?"#ff4b1f":
 "#2ecc71";
@@ -255,36 +329,66 @@ ctx.fillText(t,sx,sy);
 }
 }
 
-}catch(e){
-/* fallback render */
-ctx.fillStyle="#0f0";
-ctx.fillText("ENGINE RUNNING SAFE MODE",20,40);
+ctx.fillStyle="#00ffcc";
+ctx.fillText("@",c.width/2,c.height/2);
+
+/* enemy */
+if(state===STATE.COMBAT){
+ctx.fillText("ENEMY HP:"+enemy.hp,c.width/2-50,c.height/2-30);
 }
 
 }
 
 /* =========================
-   DEVICE UI SAFE
+   DEVICE UI
 ========================= */
 
 function deviceUI(){
 
-try{
+let html=`<h2>DEVICE V8</h2>`;
+html+=`<p>${card.name}</p>`;
+html+=`<p>HP:${card.health.toFixed(0)} HUN:${card.hunger.toFixed(0)}</p>`;
+html+=`<p>SCRAP:${card.inventory.scrap}</p>`;
 
-document.getElementById("device").innerHTML=`
-<h3>DEVICE</h3>
-<p>STATE: ${state}</p>
-<p>HP: ${card.health.toFixed(0)}</p>
-<p>SCRAP: ${card.inventory.scrap}</p>
-<p>INPUT: OK</p>
-`;
+html+=`<hr>MENU:<br>`;
 
-}catch(e){}
+MENU.forEach((m,i)=>{
+html+=(i===menuIndex?"> ":"")+m+"<br>";
+});
 
+html+="<hr>";
+
+if(MENU[menuIndex]==="LEGEND"){
+for(let k in LEGEND){
+html+=`${k} = ${LEGEND[k]}<br>`;
+}
+}
+
+if(MENU[menuIndex]==="CRAFT"){
+CRAFT.forEach(c=>{
+html+=`<p>${c.name}</p>`;
+
+let ok=true;
+for(let k in c.cost){
+if(card.inventory[k]<c.cost[k]) ok=false;
+}
+
+html+= ok?"✔ READY":"✖ MISSING";
+html+="<br><br>";
+});
+}
+
+if(MENU[menuIndex]==="STATUS"){
+html+=`<p>LOCATION: ${Math.floor(card.x)},${Math.floor(card.y)}</p>`;
+html+=`<p>HUNGER: ${card.hunger.toFixed(1)}</p>`;
+html+=`<p>STATE: ${state}</p>`;
+}
+
+document.getElementById("device").innerHTML=html;
 }
 
 /* =========================
-   MAIN LOOP (GUARANTEED)
+   LOOP
 ========================= */
 
 function loop(){
@@ -292,24 +396,17 @@ function loop(){
 update();
 render();
 
-if(state===STATE.DEVICE){
-deviceUI();
+if(state===STATE.DEVICE) deviceUI();
+if(state!==STATE.DEVICE){
+document.getElementById("device").style.display="none";
 }
 
 requestAnimationFrame(loop);
 }
 
-/* =========================
-   BOOT SAFE START
-========================= */
-
-setTimeout(()=>{
 loop();
-},100);
-
-})(); // end wrapper
 
 </script>
 
 </body>
-  </html>
+   </html>
