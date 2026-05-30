@@ -2,23 +2,18 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Device Survival v7</title>
+<title>Survival v7 Stable</title>
 
 <style>
 body{margin:0;background:#000;overflow:hidden;font-family:monospace;}
 canvas{display:block;}
-#ui{position:absolute;bottom:10px;left:10px;color:#888;font-size:12px;}
+#ui{position:absolute;bottom:10px;left:10px;color:#aaa;font-size:12px;}
 #device{
 position:absolute;top:0;left:0;width:100%;height:100%;
 background:rgba(0,0,0,0.95);
 color:#00ffcc;
-padding:16px;
+padding:14px;
 display:none;
-}
-#boot{
-position:absolute;top:0;left:0;width:100%;height:100%;
-display:flex;align-items:center;justify-content:center;
-background:#000;color:#00ffcc;
 }
 </style>
 </head>
@@ -28,13 +23,10 @@ background:#000;color:#00ffcc;
 <canvas id="c"></canvas>
 <div id="ui"></div>
 <div id="device"></div>
-<div id="boot">BOOTING V7 ENGINE...</div>
 
 <script>
 
-/* =========================
-   CANVAS
-========================= */
+/* ================= SAFE CANVAS ================= */
 
 const c=document.getElementById("c");
 const ctx=c.getContext("2d");
@@ -44,81 +36,47 @@ function resize(){
 c.width=innerWidth;
 c.height=innerHeight;
 }
-resize();
 addEventListener("resize",resize);
+resize();
 
-/* =========================
-   ENGINE STATE
-========================= */
+/* ================= STATE ================= */
 
-const STATE={
-PLAY:"play",
-COMBAT:"combat",
-DEVICE:"device"
-};
+const STATE={PLAY:"play",DEVICE:"device",COMBAT:"combat"};
+let state=STATE.PLAY;
 
-let gameState=STATE.PLAY;
-
-/* =========================
-   PLAYER
-========================= */
+/* ================= PLAYER ================= */
 
 let card={
-name:prompt("NAME?")||"UNKNOWN",
+name:"SURVIVOR",
 x:10,y:10,
 health:100,
 hunger:100,
-scrap:0,
-inventory:{wood:0,scrap:0,coal:0},
-weapon:{durability:100}
+inventory:{scrap:0,coal:0}
 };
 
-/* =========================
-   WORLD
-========================= */
+/* ================= WORLD ================= */
 
-const SIZE=30;
+const SIZE=25;
 let world=Array.from({length:SIZE},()=>Array(SIZE).fill("."));
 
 for(let y=0;y<SIZE;y++){
 for(let x=0;x<SIZE;x++){
-let r=Math.random();
-world[y][x]=r<0.7?".":r<0.85?"F":r<0.95?"L":"R";
+world[y][x]=Math.random()<0.8?".":Math.random()<0.9?"L":"F";
 }
 }
 
-/* =========================
-   VISIBILITY
-========================= */
-
-let seen=Array.from({length:SIZE},()=>Array(SIZE).fill(false));
-
-/* =========================
-   INPUT (GLOBAL)
-========================= */
+/* ================= INPUT ================= */
 
 let keys={};
-
-addEventListener("keydown",e=>{
-keys[e.code]=true;
-
-if(e.code==="KeyE") toggleDevice();
-if(e.code==="Space") action();
-});
-
+addEventListener("keydown",e=>keys[e.code]=true);
 addEventListener("keyup",e=>keys[e.code]=false);
 
-/* =========================
-   GAMEPAD
-========================= */
-
 function gp(){
-return navigator.getGamepads?.()[0];
+try{return navigator.getGamepads?.()[0];}
+catch{return null;}
 }
 
-/* =========================
-   INPUT SYSTEM (NO STATE BLOCKING)
-========================= */
+/* ================= INPUT VECTOR (SAFE) ================= */
 
 function input(){
 
@@ -130,126 +88,111 @@ if(keys["ArrowDown"]) y++;
 if(keys["ArrowLeft"]) x--;
 if(keys["ArrowRight"]) x++;
 
-/* controller */
+/* controller SAFE */
 let g=gp();
-if(g){
+if(g && g.connected){
 
-if(g.buttons[12]?.pressed) y--;
-if(g.buttons[13]?.pressed) y++;
-if(g.buttons[14]?.pressed) x--;
-if(g.buttons[15]?.pressed) x++;
+if(g.buttons?.[12]?.pressed) y--;
+if(g.buttons?.[13]?.pressed) y++;
+if(g.buttons?.[14]?.pressed) x--;
+if(g.buttons?.[15]?.pressed) x++;
 
-let ax=g.axes[0]||0;
-let ay=g.axes[1]||0;
+let ax=g.axes?.[0]||0;
+let ay=g.axes?.[1]||0;
 
 if(Math.abs(ax)>0.2) x+=ax;
 if(Math.abs(ay)>0.2) y+=ay;
 
 }
 
-let l=Math.hypot(x,y);
-if(l>1){x/=l;y/=l;}
+let len=Math.hypot(x,y);
+if(len>1){x/=len;y/=len;}
 
 return {x,y};
 }
 
-/* =========================
-   COMBAT SYSTEM
-========================= */
+/* ================= COMBAT ================= */
 
 let enemy=null;
 
 function spawnEnemy(){
-enemy={hp:50,def:5};
-gameState=STATE.COMBAT;
+enemy={hp:40};
+state=STATE.COMBAT;
 }
 
-function d20(){return Math.floor(Math.random()*20)+1;}
+function attack(){
 
-function resolveCombat(){
+if(!enemy) return;
 
-let roll=d20();
-let dmg=20;
+let roll=Math.floor(Math.random()*20)+1;
 
-let res=roll+dmg-enemy.def;
-
-card.weapon.durability-=5;
-
-if(roll<=5) card.health-=10;
-else if(roll>=18) enemy.hp-=30;
-else if(res>20) enemy.hp-=20;
+if(roll>=15) enemy.hp-=20;
+else if(roll<=5) card.health-=10;
 else enemy.hp-=10;
 
-card.health-=5;
-
 if(enemy.hp<=0){
-gameState=STATE.PLAY;
+state=STATE.PLAY;
 enemy=null;
-card.scrap++;
+card.inventory.scrap++;
 }
 
 }
 
-/* =========================
-   WORLD LOGIC
-========================= */
+/* ================= WORLD LOGIC ================= */
 
 function worldLogic(){
 
 let t=world[Math.floor(card.y)][Math.floor(card.x)];
 
-/* loot */
 if(t==="L"){
 world[Math.floor(card.y)][Math.floor(card.x)]=".";
 card.inventory.scrap++;
 }
 
-/* random encounter */
-if(t==="F" && Math.random()<0.008){
+/* simple encounter */
+if(t==="F" && Math.random()<0.005){
 spawnEnemy();
 }
 
 }
 
-/* =========================
-   UPDATE LOOP
-========================= */
+/* ================= UPDATE ================= */
 
 function update(){
 
 let i=input();
 
-/* DEVICE ALWAYS AVAILABLE */
-if(keys["KeyE"]) toggleDevice();
+/* DEVICE toggle safe */
+if(keys["KeyE"]){
+state = state===STATE.DEVICE?STATE.PLAY:STATE.DEVICE;
+keys["KeyE"]=false;
+}
 
-/* PLAY MOVEMENT */
-if(gameState===STATE.PLAY){
+/* PLAY */
+if(state===STATE.PLAY){
 
-card.x+=i.x*0.12;
-card.y+=i.y*0.12;
+card.x+=i.x*0.15;
+card.y+=i.y*0.15;
 
 card.hunger-=0.01;
-
-seen[Math.floor(card.y)][Math.floor(card.x)]=true;
 
 worldLogic();
 
 }
 
-/* COMBAT STATE */
-if(gameState===STATE.COMBAT){
-/* no movement */
+/* COMBAT */
+if(state===STATE.COMBAT){
+
+if(keys["Space"]){
+attack();
+keys["Space"]=false;
 }
 
-/* clamp */
-card.x=Math.max(0,Math.min(SIZE-1,card.x));
-card.y=Math.max(0,Math.min(SIZE-1,card.y));
+}
 
 }
 
-/* =========================
-   RENDER
-========================= */
+/* ================= RENDER ================= */
 
 function render(){
 
@@ -261,8 +204,6 @@ let s=18;
 for(let y=0;y<SIZE;y++){
 for(let x=0;x<SIZE;x++){
 
-if(!seen[y][x]) continue;
-
 let dx=x-card.x;
 let dy=y-card.y;
 
@@ -271,20 +212,12 @@ let sy=c.height/2+dy*s;
 
 let t=world[y][x];
 
-if(t==="F"){
-ctx.fillStyle="#ff4b1f";
-ctx.shadowBlur=10;
-ctx.shadowColor="#ff9900";
-ctx.fillText("≋",sx,sy);
-ctx.shadowBlur=0;
-}
-else{
 ctx.fillStyle=
 t==="L"?"#f1c40f":
-t==="R"?"#7f8c8d":"#2ecc71";
+t==="F"?"#ff4b1f":
+"#2ecc71";
 
 ctx.fillText(t,sx,sy);
-}
 
 }
 }
@@ -292,93 +225,47 @@ ctx.fillText(t,sx,sy);
 ctx.fillStyle="#00ffcc";
 ctx.fillText("@",c.width/2,c.height/2);
 
-/* enemy indicator */
-if(gameState===STATE.COMBAT){
-ctx.fillText("ENEMY",c.width/2,c.height/2-30);
+/* enemy */
+if(state===STATE.COMBAT){
+ctx.fillText("ENEMY HP:"+enemy.hp,c.width/2-50,c.height/2-30);
 }
 
 }
 
-/* =========================
-   DEVICE
-========================= */
-
-let device=false;
-
-function toggleDevice(){
-device=!device;
-gameState=device?STATE.DEVICE:STATE.PLAY;
-document.getElementById("device").style.display=device?"block":"none";
-}
-
-/* =========================
-   DEVICE UI
-========================= */
+/* ================= DEVICE ================= */
 
 function deviceUI(){
 
 document.getElementById("device").innerHTML=`
-<h2>DEVICE V7</h2>
+<h2>DEVICE</h2>
 
 <p>${card.name}</p>
 
-<p>H:${card.health.toFixed(1)} HUN:${card.hunger.toFixed(1)}</p>
+<p>HP:${card.health.toFixed(0)} HUN:${card.hunger.toFixed(0)}</p>
 
-<hr>
+<p>SCRAP:${card.inventory.scrap}</p>
 
-SCRAP:${card.inventory.scrap} COAL:${card.inventory.coal}
+<p>STATE:${state}</p>
 
-<p>STATE:${gameState}</p>
-
-<p>${gameState===STATE.COMBAT?"⚔ COMBAT ACTIVE (SPACE TO ATTACK)":"SAFE"}</p>
+<p>${state==="COMBAT"?"FIGHT MODE (SPACE)":"SAFE"}</p>
 `;
-}
-
-/* =========================
-   ACTION
-========================= */
-
-function action(){
-
-if(gameState===STATE.COMBAT){
-resolveCombat();
-}
 
 }
 
-/* =========================
-   LOOP
-========================= */
+/* ================= LOOP ================= */
 
 function loop(){
 
 update();
-
-if(gameState===STATE.DEVICE) deviceUI();
 render();
 
-document.getElementById("ui").innerText=
-`STATE:${gameState} SCRAP:${card.inventory.scrap}`;
+if(state===STATE.DEVICE) deviceUI();
+if(state!==STATE.DEVICE) document.getElementById("device").style.display="none";
 
 requestAnimationFrame(loop);
 }
 
-/* =========================
-   BOOT
-========================= */
-
-let b=0;
-let boot=document.getElementById("boot");
-
-let t=setInterval(()=>{
-b++;
-boot.innerText="BOOTING V7 ENGINE"+ ".".repeat(b%4);
-if(b>10){
-clearInterval(t);
-boot.style.display="none";
 loop();
-}
-},200);
 
 </script>
 
