@@ -1,27 +1,26 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Rustic Open World</title>
-  <style>
-    body { margin: 0; overflow: hidden; background: #87b5a3; }
-    canvas { display: block; }
-  </style>
+<meta charset="UTF-8" />
+<title>Rustic World FIXED</title>
+<style>
+  body { margin: 0; overflow: hidden; background: #87b5a3; }
+  canvas { display: block; }
+</style>
 
-  <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/simplex-noise@4.0.1/dist/esm/simplex-noise.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/simplex-noise@4.0.1/simplex-noise.min.js"></script>
 </head>
 
 <body>
 <script>
-/* -----------------------------
-   BASIC SETUP
-------------------------------*/
+
+/* ------------------ SETUP ------------------ */
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0xaac7b5, 80, 400);
 
 const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.1, 1000);
-camera.position.set(0, 30, 60);
+camera.position.set(50, 60, 80);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight);
@@ -30,20 +29,16 @@ document.body.appendChild(renderer.domElement);
 const light = new THREE.DirectionalLight(0xffffff, 1);
 light.position.set(50, 100, 20);
 scene.add(light);
-
 scene.add(new THREE.AmbientLight(0x666666));
 
-/* -----------------------------
-   NOISE
-------------------------------*/
+/* ------------------ NOISE FIX ------------------ */
 const simplex = new SimplexNoise();
+
 function noise(x, z) {
   return simplex.noise2D(x, z);
 }
 
-/* -----------------------------
-   TERRAIN HEIGHT
-------------------------------*/
+/* ------------------ HEIGHT ------------------ */
 function getHeight(x, z) {
   return (
     noise(x * 0.005, z * 0.005) * 20 +
@@ -51,20 +46,7 @@ function getHeight(x, z) {
   );
 }
 
-/* -----------------------------
-   CHUNKS
-------------------------------*/
-const SIZE = 100;
-const chunks = new Map();
-const ACTIVE = 2;
-
-function chunkKey(x, z) {
-  return `${x},${z}`;
-}
-
-/* -----------------------------
-   TREES
-------------------------------*/
+/* ------------------ TREES ------------------ */
 function createTree(x, y, z) {
   const g = new THREE.Group();
 
@@ -80,16 +62,62 @@ function createTree(x, y, z) {
   );
   leaves.position.y = 4;
 
-  g.add(trunk);
-  g.add(leaves);
-
+  g.add(trunk, leaves);
   g.position.set(x, y, z);
+
   return g;
 }
 
-/* -----------------------------
-   FARMS (rustic + sparse)
-------------------------------*/
+/* ------------------ CHUNKS ------------------ */
+const SIZE = 100;
+const chunks = new Map();
+const ACTIVE = 2;
+
+function key(x, z) {
+  return `${x},${z}`;
+}
+
+function createChunk(cx, cz) {
+
+  const geo = new THREE.PlaneGeometry(SIZE, SIZE, 20, 20);
+  geo.rotateX(-Math.PI / 2);
+
+  const pos = geo.attributes.position;
+
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i) + cx * SIZE;
+    const z = pos.getZ(i) + cz * SIZE;
+
+    pos.setY(i, getHeight(x, z));
+  }
+
+  geo.computeVertexNormals();
+
+  const mesh = new THREE.Mesh(
+    geo,
+    new THREE.MeshStandardMaterial({ color: 0x4f7a3a })
+  );
+
+  mesh.position.set(cx * SIZE, 0, cz * SIZE);
+  scene.add(mesh);
+
+  chunks.set(key(cx, cz), mesh);
+
+  // trees
+  for (let i = 0; i < 10; i++) {
+    const tx = cx * SIZE + Math.random() * SIZE;
+    const tz = cz * SIZE + Math.random() * SIZE;
+    const ty = getHeight(tx, tz);
+
+    if (Math.random() < 0.6) {
+      scene.add(createTree(tx, ty, tz));
+    }
+  }
+}
+
+/* ------------------ FARMS ------------------ */
+const farms = [];
+
 function createCabin(x, y, z) {
   const g = new THREE.Group();
 
@@ -107,183 +135,97 @@ function createCabin(x, y, z) {
 
   g.add(base, roof);
   g.position.set(x, y, z);
+
   return g;
 }
 
-function createBarn(x, y, z) {
-  const g = new THREE.Group();
-
-  const base = new THREE.Mesh(
-    new THREE.BoxGeometry(10, 5, 8),
-    new THREE.MeshStandardMaterial({ color: 0x7a2f2f })
-  );
-  base.position.y = 2.5;
-
-  g.add(base);
-  g.position.set(x, y, z);
-  return g;
-}
-
-/* -----------------------------
-   ROAD SYSTEM (Dirt roads)
-------------------------------*/
-const roadMaterial = new THREE.MeshStandardMaterial({ color: 0x6b5b4a });
-
-function createRoad(points) {
-  const curve = new THREE.CatmullRomCurve3(points);
-
-  const geo = new THREE.TubeGeometry(curve, 80, 1.2, 6, false);
-  const mesh = new THREE.Mesh(geo, roadMaterial);
-
-  scene.add(mesh);
-}
-
-/* -----------------------------
-   RUSTIC FARM GENERATION
-------------------------------*/
-const farms = [];
-
-function generateFarm(x, z) {
-  const y = getHeight(x, z);
-
-  if (Math.abs(noise(x * 0.01, z * 0.01)) < 0.3) return;
-
-  const type = Math.random();
-
-  let structure;
-
-  if (type < 0.6) {
-    structure = createCabin(x, y, z);
-  } else {
-    structure = createBarn(x, y, z);
-  }
-
-  scene.add(structure);
-  farms.push(new THREE.Vector3(x, y, z));
-}
-
-/* -----------------------------
-   SPARSE FARM PLACEMENT
-------------------------------*/
-function generateWorldFarms() {
+/* ------------------ FARM SPAWN ------------------ */
+function generateFarms() {
   const spacing = 400;
 
   for (let x = -2; x <= 2; x++) {
     for (let z = -2; z <= 2; z++) {
 
-      const fx = x * spacing + (Math.random() - 0.5) * 120;
-      const fz = z * spacing + (Math.random() - 0.5) * 120;
+      const fx = x * spacing + (Math.random() - 0.5) * 100;
+      const fz = z * spacing + (Math.random() - 0.5) * 100;
 
-      generateFarm(fx, fz);
-    }
-  }
-}
+      const fy = getHeight(fx, fz);
 
-/* -----------------------------
-   CONNECT FARMS WITH ROADS
-------------------------------*/
-function generateRoadNetwork() {
-  for (let i = 0; i < farms.length - 1; i++) {
-    const a = farms[i];
-    const b = farms[i + 1];
-
-    const mid = new THREE.Vector3(
-      (a.x + b.x) / 2 + (Math.random() - 0.5) * 40,
-      (a.y + b.y) / 2,
-      (a.z + b.z) / 2 + (Math.random() - 0.5) * 40
-    );
-
-    createRoad([a, mid, b]);
-  }
-}
-
-/* -----------------------------
-   TERRAIN CHUNK
-------------------------------*/
-function createChunk(cx, cz) {
-  const geo = new THREE.PlaneGeometry(SIZE, SIZE, 20, 20);
-  geo.rotateX(-Math.PI / 2);
-
-  const pos = geo.attributes.position;
-
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i) + cx * SIZE;
-    const z = pos.getZ(i) + cz * SIZE;
-
-    const y = getHeight(x, z);
-
-    pos.setY(i, y);
-  }
-
-  geo.computeVertexNormals();
-
-  const mesh = new THREE.Mesh(
-    geo,
-    new THREE.MeshStandardMaterial({ color: 0x4f7a3a })
-  );
-
-  mesh.position.set(cx * SIZE, 0, cz * SIZE);
-  scene.add(mesh);
-
-  chunks.set(chunkKey(cx, cz), mesh);
-
-  // trees (low density)
-  for (let i = 0; i < 15; i++) {
-    const tx = cx * SIZE + Math.random() * SIZE;
-    const tz = cz * SIZE + Math.random() * SIZE;
-
-    const ty = getHeight(tx, tz);
-
-    if (Math.random() < 0.6) {
-      scene.add(createTree(tx, ty, tz));
-    }
-  }
-}
-
-/* -----------------------------
-   CHUNK UPDATE
-------------------------------*/
-function updateChunks(px, pz) {
-  const cx = Math.floor(px / SIZE);
-  const cz = Math.floor(pz / SIZE);
-
-  for (let x = cx - ACTIVE; x <= cx + ACTIVE; x++) {
-    for (let z = cz - ACTIVE; z <= cz + ACTIVE; z++) {
-      const key = chunkKey(x, z);
-
-      if (!chunks.has(key)) {
-        createChunk(x, z);
+      if (Math.random() < 0.4) {
+        const farm = createCabin(fx, fy, fz);
+        scene.add(farm);
+        farms.push(farm.position);
       }
     }
   }
 }
 
-/* -----------------------------
-   INIT WORLD
-------------------------------*/
-generateWorldFarms();
-generateRoadNetwork();
+/* ------------------ ROADS ------------------ */
+function createRoad(a, b) {
+  const curve = new THREE.CatmullRomCurve3([
+    a,
+    new THREE.Vector3(
+      (a.x + b.x)/2 + (Math.random()-0.5)*30,
+      (a.y + b.y)/2,
+      (a.z + b.z)/2 + (Math.random()-0.5)*30
+    ),
+    b
+  ]);
 
-/* initial terrain */
+  const geo = new THREE.TubeGeometry(curve, 40, 1.2, 6, false);
+  const mesh = new THREE.Mesh(
+    geo,
+    new THREE.MeshStandardMaterial({ color: 0x6b5b4a })
+  );
+
+  scene.add(mesh);
+}
+
+function generateRoads() {
+  for (let i = 0; i < farms.length - 1; i++) {
+    createRoad(farms[i], farms[i+1]);
+  }
+}
+
+/* ------------------ INIT ------------------ */
+generateFarms();
+generateRoads();
+
 for (let x = -2; x <= 2; x++) {
   for (let z = -2; z <= 2; z++) {
     createChunk(x, z);
   }
 }
 
-/* -----------------------------
-   RENDER LOOP
-------------------------------*/
+/* ------------------ UPDATE ------------------ */
+function updateChunks(px, pz) {
+  const cx = Math.floor(px / SIZE);
+  const cz = Math.floor(pz / SIZE);
+
+  for (let x = cx - ACTIVE; x <= cx + ACTIVE; x++) {
+    for (let z = cz - ACTIVE; z <= cz + ACTIVE; z++) {
+
+      const k = key(x, z);
+
+      if (!chunks.has(k)) {
+        createChunk(x, z);
+      }
+    }
+  }
+}
+
+/* ------------------ CAMERA FIX ------------------ */
+let t = 0;
+
 function animate() {
   requestAnimationFrame(animate);
 
-  const t = performance.now() * 0.01;
+  t += 0.01;
 
-  const px = Math.sin(t) * 50;
-  const pz = Math.cos(t) * 50;
+  const px = Math.sin(t) * 80;
+  const pz = Math.cos(t) * 80;
 
-  camera.position.x = px;
-  camera.position.z = pz;
+  camera.position.set(px, 60, pz);
   camera.lookAt(0, 0, 0);
 
   updateChunks(px, pz);
@@ -298,6 +240,7 @@ window.addEventListener("resize", () => {
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
 });
+
 </script>
 </body>
 </html>
