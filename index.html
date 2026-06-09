@@ -2,16 +2,19 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Something, For Everyone - Prototype</title>
+<title>Southern Prototype (Optimized)</title>
+
 <style>
   body {
     margin: 0;
     overflow: hidden;
     background: black;
-    font-family: Arial;
   }
 
   canvas {
+    width: 100vw;
+    height: 100vh;
+    image-rendering: pixelated;
     display: block;
   }
 
@@ -20,37 +23,38 @@
     top: 10px;
     left: 10px;
     color: white;
-    font-size: 14px;
-    background: rgba(0,0,0,0.5);
-    padding: 10px;
+    font-family: Arial;
+    font-size: 12px;
+    background: rgba(0,0,0,0.4);
+    padding: 8px;
   }
 </style>
 </head>
+
 <body>
 
 <canvas id="game"></canvas>
 
 <div id="ui">
-  <div>Move: W A S D</div>
-  <div>Look: Left / Right keys</div>
-  <div>Press E near resource (future)</div>
+  WASD move | ← → rotate
 </div>
 
 <script>
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+// LOW INTERNAL RESOLUTION (BIG PERFORMANCE WIN)
+canvas.width = 360;
+canvas.height = 220;
 
-// MAP (1 = wall, 0 = empty)
+// SIMPLE MAP (1 = wall, 0 = open)
 const map = [
   [1,1,1,1,1,1,1,1,1,1],
   [1,0,0,0,0,0,0,0,0,1],
-  [1,0,1,0,1,0,1,0,0,1],
-  [1,0,1,0,0,0,1,0,0,1],
-  [1,0,0,0,1,0,0,0,0,1],
-  [1,0,1,0,1,0,1,0,0,1],
+  [1,0,1,0,0,1,0,0,0,1],
+  [1,0,1,0,0,1,0,0,0,1],
+  [1,0,0,0,0,0,0,0,0,1],
+  [1,0,0,1,0,0,1,0,0,1],
   [1,0,0,0,0,0,0,0,0,1],
   [1,1,1,1,1,1,1,1,1,1]
 ];
@@ -62,64 +66,70 @@ let player = {
   fov: Math.PI / 3
 };
 
-const moveSpeed = 0.05;
-const rotSpeed = 0.03;
-
 // INPUT
 let keys = {};
 document.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
 document.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
 
+// SPEEDS
+const moveSpeed = 0.04;
+const rotSpeed = 0.03;
+
 // COLLISION
-function isWall(x, y) {
+function wall(x, y) {
   return map[Math.floor(y)][Math.floor(x)] === 1;
 }
 
-// GAME LOOP
+// UPDATE
 function update() {
 
-  // rotation
   if (keys["arrowleft"]) player.dir -= rotSpeed;
   if (keys["arrowright"]) player.dir += rotSpeed;
 
-  let newX = player.x;
-  let newY = player.y;
+  let nx = player.x;
+  let ny = player.y;
 
-  // forward/back
   if (keys["w"]) {
-    newX += Math.cos(player.dir) * moveSpeed;
-    newY += Math.sin(player.dir) * moveSpeed;
+    nx += Math.cos(player.dir) * moveSpeed;
+    ny += Math.sin(player.dir) * moveSpeed;
   }
   if (keys["s"]) {
-    newX -= Math.cos(player.dir) * moveSpeed;
-    newY -= Math.sin(player.dir) * moveSpeed;
+    nx -= Math.cos(player.dir) * moveSpeed;
+    ny -= Math.sin(player.dir) * moveSpeed;
   }
 
-  // strafe
   if (keys["a"]) {
-    newX += Math.cos(player.dir - Math.PI/2) * moveSpeed;
-    newY += Math.sin(player.dir - Math.PI/2) * moveSpeed;
+    nx += Math.cos(player.dir - Math.PI / 2) * moveSpeed;
+    ny += Math.sin(player.dir - Math.PI / 2) * moveSpeed;
   }
   if (keys["d"]) {
-    newX += Math.cos(player.dir + Math.PI/2) * moveSpeed;
-    newY += Math.sin(player.dir + Math.PI/2) * moveSpeed;
+    nx += Math.cos(player.dir + Math.PI / 2) * moveSpeed;
+    ny += Math.sin(player.dir + Math.PI / 2) * moveSpeed;
   }
 
-  if (!isWall(newX, player.y)) player.x = newX;
-  if (!isWall(player.x, newY)) player.y = newY;
+  if (!wall(nx, player.y)) player.x = nx;
+  if (!wall(player.x, ny)) player.y = ny;
 }
 
-// RAYCAST RENDERING
+// OPTIMIZED RENDER (FEWER RAYS + BIG STEP)
+const screenWidth = canvas.width;
+const screenHeight = canvas.height;
+const depth = 16;
+
 function render() {
-  ctx.fillStyle = "#111";
-  ctx.fillRect(0,0,canvas.width,canvas.height/2);
 
-  ctx.fillStyle = "#222";
-  ctx.fillRect(0,canvas.height/2,canvas.width,canvas.height/2);
+  // SKY (simple day/night loop placeholder)
+  let t = (Date.now() * 0.00005) % 1;
+  let isDay = t < 0.5;
 
-  for (let x = 0; x < canvas.width; x++) {
+  ctx.fillStyle = isDay ? "rgb(120,180,255)" : "rgb(10,10,35)";
+  ctx.fillRect(0,0,screenWidth,screenHeight);
 
-    let rayAngle = (player.dir - player.fov/2) + (x / canvas.width) * player.fov;
+  const step = 2; // RAY OPTIMIZATION
+
+  for (let x = 0; x < screenWidth; x += step) {
+
+    let rayAngle = (player.dir - player.fov/2) + (x / screenWidth) * player.fov;
 
     let dist = 0;
     let hit = false;
@@ -127,8 +137,8 @@ function render() {
     let eyeX = Math.cos(rayAngle);
     let eyeY = Math.sin(rayAngle);
 
-    while (!hit && dist < 20) {
-      dist += 0.05;
+    while (!hit && dist < depth) {
+      dist += 0.08; // faster stepping
 
       let testX = Math.floor(player.x + eyeX * dist);
       let testY = Math.floor(player.y + eyeY * dist);
@@ -138,21 +148,21 @@ function render() {
       }
     }
 
-    let wallHeight = canvas.height / dist;
-
-    let shade = 255 - dist * 20;
+    let shade = 255 - dist * 18;
     if (shade < 0) shade = 0;
 
+    let wallHeight = screenHeight / (dist + 0.0001);
+
     ctx.fillStyle = `rgb(${shade},${shade},${shade})`;
-    ctx.fillRect(x, (canvas.height/2) - wallHeight/2, 1, wallHeight);
+    ctx.fillRect(x, screenHeight/2 - wallHeight/2, step, wallHeight);
   }
 
-  // crosshair
+  // CROSSHAIR
   ctx.fillStyle = "red";
-  ctx.fillRect(canvas.width/2 - 2, canvas.height/2 - 2, 4, 4);
+  ctx.fillRect(screenWidth/2 - 2, screenHeight/2 - 2, 4, 4);
 }
 
-// LOOP
+// LOOP (stable)
 function loop() {
   update();
   render();
