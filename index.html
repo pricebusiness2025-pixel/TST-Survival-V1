@@ -1,182 +1,303 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>World Test - Southern Environment</title>
+  <meta charset="UTF-8" />
+  <title>Rustic Open World</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #87b5a3; }
+    canvas { display: block; }
+  </style>
 
-<style>
-  body {
-    margin: 0;
-    overflow: hidden;
-    background: black;
-  }
-
-  canvas {
-    width: 100vw;
-    height: 100vh;
-    image-rendering: pixelated;
-    display: block;
-  }
-
-  #ui {
-    position: absolute;
-    top: 10px;
-    left: 10px;
-    color: white;
-    font-family: Arial;
-    font-size: 12px;
-    background: rgba(0,0,0,0.4);
-    padding: 8px;
-  }
-</style>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/simplex-noise@4.0.1/dist/esm/simplex-noise.js"></script>
 </head>
 
 <body>
-
-<canvas id="game"></canvas>
-
-<div id="ui">
-  <div>WASD move | ← → rotate</div>
-</div>
-
 <script>
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
+/* -----------------------------
+   BASIC SETUP
+------------------------------*/
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0xaac7b5, 80, 400);
 
-// LOW RES FOR PERFORMANCE
-canvas.width = 360;
-canvas.height = 220;
+const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.1, 1000);
+camera.position.set(0, 30, 60);
 
-const map = [
-[1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-[1,0,0,0,2,0,0,0,3,0,0,0,0,1],
-[1,0,0,0,0,0,0,0,0,0,0,0,0,1],
-[1,0,2,0,0,0,0,3,0,0,0,0,0,1],
-[1,0,0,0,0,0,0,0,0,0,2,0,0,1],
-[1,0,0,3,0,0,0,0,0,0,0,0,0,1],
-[1,0,0,0,0,2,0,0,0,3,0,0,0,1],
-[1,0,0,0,0,0,0,0,0,0,0,0,0,1],
-[1,1,1,1,1,1,1,1,1,1,1,1,1,1]
-];
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
 
-let player = {
-  x: 2,
-  y: 2,
-  dir: 0,
-  fov: Math.PI / 3
-};
+const light = new THREE.DirectionalLight(0xffffff, 1);
+light.position.set(50, 100, 20);
+scene.add(light);
 
-const moveSpeed = 0.04;
-const rotSpeed = 0.03;
+scene.add(new THREE.AmbientLight(0x666666));
 
-let keys = {};
-document.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
-document.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
-
-function wall(x, y) {
-  return map[Math.floor(y)][Math.floor(x)] === 1;
+/* -----------------------------
+   NOISE
+------------------------------*/
+const simplex = new SimplexNoise();
+function noise(x, z) {
+  return simplex.noise2D(x, z);
 }
 
-function update() {
-  if (keys["arrowleft"]) player.dir -= rotSpeed;
-  if (keys["arrowright"]) player.dir += rotSpeed;
-
-  let nx = player.x;
-  let ny = player.y;
-
-  if (keys["w"]) {
-    nx += Math.cos(player.dir) * moveSpeed;
-    ny += Math.sin(player.dir) * moveSpeed;
-  }
-  if (keys["s"]) {
-    nx -= Math.cos(player.dir) * moveSpeed;
-    ny -= Math.sin(player.dir) * moveSpeed;
-  }
-  if (keys["a"]) {
-    nx += Math.cos(player.dir - Math.PI/2) * moveSpeed;
-    ny += Math.sin(player.dir - Math.PI/2) * moveSpeed;
-  }
-  if (keys["d"]) {
-    nx += Math.cos(player.dir + Math.PI/2) * moveSpeed;
-    ny += Math.sin(player.dir + Math.PI/2) * moveSpeed;
-  }
-
-  if (!wall(nx, player.y)) player.x = nx;
-  if (!wall(player.x, ny)) player.y = ny;
+/* -----------------------------
+   TERRAIN HEIGHT
+------------------------------*/
+function getHeight(x, z) {
+  return (
+    noise(x * 0.005, z * 0.005) * 20 +
+    noise(x * 0.02, z * 0.02) * 6
+  );
 }
 
-// SIMPLE DAY/NIGHT LOOP
-let time = 0;
+/* -----------------------------
+   CHUNKS
+------------------------------*/
+const SIZE = 100;
+const chunks = new Map();
+const ACTIVE = 2;
 
-function render() {
-  time += 0.0003;
-  if (time > 1) time = 0;
+function chunkKey(x, z) {
+  return `${x},${z}`;
+}
 
-  let isDay = time < 0.5;
+/* -----------------------------
+   TREES
+------------------------------*/
+function createTree(x, y, z) {
+  const g = new THREE.Group();
 
-  // SKY
-  ctx.fillStyle = isDay ? "rgb(120, 190, 255)" : "rgb(10, 12, 40)";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.3, 0.5, 3),
+    new THREE.MeshStandardMaterial({ color: 0x6b4f2a })
+  );
+  trunk.position.y = 1.5;
 
-  const step = 2;
+  const leaves = new THREE.Mesh(
+    new THREE.ConeGeometry(1.5, 4, 6),
+    new THREE.MeshStandardMaterial({ color: 0x2f7a3b })
+  );
+  leaves.position.y = 4;
 
-  for (let x = 0; x < canvas.width; x += step) {
+  g.add(trunk);
+  g.add(leaves);
 
-    let rayAngle = (player.dir - player.fov/2) + (x / canvas.width) * player.fov;
+  g.position.set(x, y, z);
+  return g;
+}
 
-    let dist = 0;
-    let hit = false;
+/* -----------------------------
+   FARMS (rustic + sparse)
+------------------------------*/
+function createCabin(x, y, z) {
+  const g = new THREE.Group();
 
-    let eyeX = Math.cos(rayAngle);
-    let eyeY = Math.sin(rayAngle);
+  const base = new THREE.Mesh(
+    new THREE.BoxGeometry(6, 3, 6),
+    new THREE.MeshStandardMaterial({ color: 0x8b5a2b })
+  );
+  base.position.y = 1.5;
 
-    let tile = 0;
+  const roof = new THREE.Mesh(
+    new THREE.ConeGeometry(5, 3, 4),
+    new THREE.MeshStandardMaterial({ color: 0x3a2a22 })
+  );
+  roof.position.y = 4;
 
-    while (!hit && dist < 16) {
-      dist += 0.08;
+  g.add(base, roof);
+  g.position.set(x, y, z);
+  return g;
+}
 
-      let testX = Math.floor(player.x + eyeX * dist);
-      let testY = Math.floor(player.y + eyeY * dist);
+function createBarn(x, y, z) {
+  const g = new THREE.Group();
 
-      if (map[testY] && map[testY][testX] > 0) {
-        hit = true;
-        tile = map[testY][testX];
+  const base = new THREE.Mesh(
+    new THREE.BoxGeometry(10, 5, 8),
+    new THREE.MeshStandardMaterial({ color: 0x7a2f2f })
+  );
+  base.position.y = 2.5;
+
+  g.add(base);
+  g.position.set(x, y, z);
+  return g;
+}
+
+/* -----------------------------
+   ROAD SYSTEM (Dirt roads)
+------------------------------*/
+const roadMaterial = new THREE.MeshStandardMaterial({ color: 0x6b5b4a });
+
+function createRoad(points) {
+  const curve = new THREE.CatmullRomCurve3(points);
+
+  const geo = new THREE.TubeGeometry(curve, 80, 1.2, 6, false);
+  const mesh = new THREE.Mesh(geo, roadMaterial);
+
+  scene.add(mesh);
+}
+
+/* -----------------------------
+   RUSTIC FARM GENERATION
+------------------------------*/
+const farms = [];
+
+function generateFarm(x, z) {
+  const y = getHeight(x, z);
+
+  if (Math.abs(noise(x * 0.01, z * 0.01)) < 0.3) return;
+
+  const type = Math.random();
+
+  let structure;
+
+  if (type < 0.6) {
+    structure = createCabin(x, y, z);
+  } else {
+    structure = createBarn(x, y, z);
+  }
+
+  scene.add(structure);
+  farms.push(new THREE.Vector3(x, y, z));
+}
+
+/* -----------------------------
+   SPARSE FARM PLACEMENT
+------------------------------*/
+function generateWorldFarms() {
+  const spacing = 400;
+
+  for (let x = -2; x <= 2; x++) {
+    for (let z = -2; z <= 2; z++) {
+
+      const fx = x * spacing + (Math.random() - 0.5) * 120;
+      const fz = z * spacing + (Math.random() - 0.5) * 120;
+
+      generateFarm(fx, fz);
+    }
+  }
+}
+
+/* -----------------------------
+   CONNECT FARMS WITH ROADS
+------------------------------*/
+function generateRoadNetwork() {
+  for (let i = 0; i < farms.length - 1; i++) {
+    const a = farms[i];
+    const b = farms[i + 1];
+
+    const mid = new THREE.Vector3(
+      (a.x + b.x) / 2 + (Math.random() - 0.5) * 40,
+      (a.y + b.y) / 2,
+      (a.z + b.z) / 2 + (Math.random() - 0.5) * 40
+    );
+
+    createRoad([a, mid, b]);
+  }
+}
+
+/* -----------------------------
+   TERRAIN CHUNK
+------------------------------*/
+function createChunk(cx, cz) {
+  const geo = new THREE.PlaneGeometry(SIZE, SIZE, 20, 20);
+  geo.rotateX(-Math.PI / 2);
+
+  const pos = geo.attributes.position;
+
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i) + cx * SIZE;
+    const z = pos.getZ(i) + cz * SIZE;
+
+    const y = getHeight(x, z);
+
+    pos.setY(i, y);
+  }
+
+  geo.computeVertexNormals();
+
+  const mesh = new THREE.Mesh(
+    geo,
+    new THREE.MeshStandardMaterial({ color: 0x4f7a3a })
+  );
+
+  mesh.position.set(cx * SIZE, 0, cz * SIZE);
+  scene.add(mesh);
+
+  chunks.set(chunkKey(cx, cz), mesh);
+
+  // trees (low density)
+  for (let i = 0; i < 15; i++) {
+    const tx = cx * SIZE + Math.random() * SIZE;
+    const tz = cz * SIZE + Math.random() * SIZE;
+
+    const ty = getHeight(tx, tz);
+
+    if (Math.random() < 0.6) {
+      scene.add(createTree(tx, ty, tz));
+    }
+  }
+}
+
+/* -----------------------------
+   CHUNK UPDATE
+------------------------------*/
+function updateChunks(px, pz) {
+  const cx = Math.floor(px / SIZE);
+  const cz = Math.floor(pz / SIZE);
+
+  for (let x = cx - ACTIVE; x <= cx + ACTIVE; x++) {
+    for (let z = cz - ACTIVE; z <= cz + ACTIVE; z++) {
+      const key = chunkKey(x, z);
+
+      if (!chunks.has(key)) {
+        createChunk(x, z);
       }
     }
-
-    let shade = 255 - dist * 18;
-    if (shade < 0) shade = 0;
-
-    let color;
-
-    // 🌿 ENVIRONMENT COLORS
-    if (tile === 1) {
-      color = `rgb(${shade},${shade},${shade})`; // boundary
-    } else if (tile === 2) {
-      color = `rgb(30, ${shade}, 30)`; // TREE (green Southern feel)
-    } else if (tile === 3) {
-      color = `rgb(${shade}, ${shade}, ${shade/2})`; // ROCK
-    }
-
-    let wallHeight = canvas.height / (dist + 0.0001);
-
-    ctx.fillStyle = color;
-    ctx.fillRect(x, canvas.height/2 - wallHeight/2, step, wallHeight);
   }
-
-  // crosshair
-  ctx.fillStyle = "red";
-  ctx.fillRect(canvas.width/2 - 2, canvas.height/2 - 2, 4, 4);
 }
 
-function loop() {
-  update();
-  render();
-  requestAnimationFrame(loop);
+/* -----------------------------
+   INIT WORLD
+------------------------------*/
+generateWorldFarms();
+generateRoadNetwork();
+
+/* initial terrain */
+for (let x = -2; x <= 2; x++) {
+  for (let z = -2; z <= 2; z++) {
+    createChunk(x, z);
+  }
 }
 
-loop();
+/* -----------------------------
+   RENDER LOOP
+------------------------------*/
+function animate() {
+  requestAnimationFrame(animate);
+
+  const t = performance.now() * 0.01;
+
+  const px = Math.sin(t) * 50;
+  const pz = Math.cos(t) * 50;
+
+  camera.position.x = px;
+  camera.position.z = pz;
+  camera.lookAt(0, 0, 0);
+
+  updateChunks(px, pz);
+
+  renderer.render(scene, camera);
+}
+
+animate();
+
+window.addEventListener("resize", () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
 </script>
-
 </body>
 </html>
