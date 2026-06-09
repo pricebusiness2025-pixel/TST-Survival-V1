@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Southern Prototype (Optimized)</title>
+<title>World Test - Southern Environment</title>
 
 <style>
   body {
@@ -36,53 +36,48 @@
 <canvas id="game"></canvas>
 
 <div id="ui">
-  WASD move | ← → rotate
+  <div>WASD move | ← → rotate</div>
 </div>
 
 <script>
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-// LOW INTERNAL RESOLUTION (BIG PERFORMANCE WIN)
+// LOW RES FOR PERFORMANCE
 canvas.width = 360;
 canvas.height = 220;
 
-// SIMPLE MAP (1 = wall, 0 = open)
 const map = [
-  [1,1,1,1,1,1,1,1,1,1],
-  [1,0,0,0,0,0,0,0,0,1],
-  [1,0,1,0,0,1,0,0,0,1],
-  [1,0,1,0,0,1,0,0,0,1],
-  [1,0,0,0,0,0,0,0,0,1],
-  [1,0,0,1,0,0,1,0,0,1],
-  [1,0,0,0,0,0,0,0,0,1],
-  [1,1,1,1,1,1,1,1,1,1]
+[1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+[1,0,0,0,2,0,0,0,3,0,0,0,0,1],
+[1,0,0,0,0,0,0,0,0,0,0,0,0,1],
+[1,0,2,0,0,0,0,3,0,0,0,0,0,1],
+[1,0,0,0,0,0,0,0,0,0,2,0,0,1],
+[1,0,0,3,0,0,0,0,0,0,0,0,0,1],
+[1,0,0,0,0,2,0,0,0,3,0,0,0,1],
+[1,0,0,0,0,0,0,0,0,0,0,0,0,1],
+[1,1,1,1,1,1,1,1,1,1,1,1,1,1]
 ];
 
 let player = {
-  x: 3,
-  y: 3,
+  x: 2,
+  y: 2,
   dir: 0,
   fov: Math.PI / 3
 };
 
-// INPUT
+const moveSpeed = 0.04;
+const rotSpeed = 0.03;
+
 let keys = {};
 document.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
 document.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
 
-// SPEEDS
-const moveSpeed = 0.04;
-const rotSpeed = 0.03;
-
-// COLLISION
 function wall(x, y) {
   return map[Math.floor(y)][Math.floor(x)] === 1;
 }
 
-// UPDATE
 function update() {
-
   if (keys["arrowleft"]) player.dir -= rotSpeed;
   if (keys["arrowright"]) player.dir += rotSpeed;
 
@@ -97,39 +92,37 @@ function update() {
     nx -= Math.cos(player.dir) * moveSpeed;
     ny -= Math.sin(player.dir) * moveSpeed;
   }
-
   if (keys["a"]) {
-    nx += Math.cos(player.dir - Math.PI / 2) * moveSpeed;
-    ny += Math.sin(player.dir - Math.PI / 2) * moveSpeed;
+    nx += Math.cos(player.dir - Math.PI/2) * moveSpeed;
+    ny += Math.sin(player.dir - Math.PI/2) * moveSpeed;
   }
   if (keys["d"]) {
-    nx += Math.cos(player.dir + Math.PI / 2) * moveSpeed;
-    ny += Math.sin(player.dir + Math.PI / 2) * moveSpeed;
+    nx += Math.cos(player.dir + Math.PI/2) * moveSpeed;
+    ny += Math.sin(player.dir + Math.PI/2) * moveSpeed;
   }
 
   if (!wall(nx, player.y)) player.x = nx;
   if (!wall(player.x, ny)) player.y = ny;
 }
 
-// OPTIMIZED RENDER (FEWER RAYS + BIG STEP)
-const screenWidth = canvas.width;
-const screenHeight = canvas.height;
-const depth = 16;
+// SIMPLE DAY/NIGHT LOOP
+let time = 0;
 
 function render() {
+  time += 0.0003;
+  if (time > 1) time = 0;
 
-  // SKY (simple day/night loop placeholder)
-  let t = (Date.now() * 0.00005) % 1;
-  let isDay = t < 0.5;
+  let isDay = time < 0.5;
 
-  ctx.fillStyle = isDay ? "rgb(120,180,255)" : "rgb(10,10,35)";
-  ctx.fillRect(0,0,screenWidth,screenHeight);
+  // SKY
+  ctx.fillStyle = isDay ? "rgb(120, 190, 255)" : "rgb(10, 12, 40)";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  const step = 2; // RAY OPTIMIZATION
+  const step = 2;
 
-  for (let x = 0; x < screenWidth; x += step) {
+  for (let x = 0; x < canvas.width; x += step) {
 
-    let rayAngle = (player.dir - player.fov/2) + (x / screenWidth) * player.fov;
+    let rayAngle = (player.dir - player.fov/2) + (x / canvas.width) * player.fov;
 
     let dist = 0;
     let hit = false;
@@ -137,32 +130,45 @@ function render() {
     let eyeX = Math.cos(rayAngle);
     let eyeY = Math.sin(rayAngle);
 
-    while (!hit && dist < depth) {
-      dist += 0.08; // faster stepping
+    let tile = 0;
+
+    while (!hit && dist < 16) {
+      dist += 0.08;
 
       let testX = Math.floor(player.x + eyeX * dist);
       let testY = Math.floor(player.y + eyeY * dist);
 
-      if (map[testY] && map[testY][testX] === 1) {
+      if (map[testY] && map[testY][testX] > 0) {
         hit = true;
+        tile = map[testY][testX];
       }
     }
 
     let shade = 255 - dist * 18;
     if (shade < 0) shade = 0;
 
-    let wallHeight = screenHeight / (dist + 0.0001);
+    let color;
 
-    ctx.fillStyle = `rgb(${shade},${shade},${shade})`;
-    ctx.fillRect(x, screenHeight/2 - wallHeight/2, step, wallHeight);
+    // 🌿 ENVIRONMENT COLORS
+    if (tile === 1) {
+      color = `rgb(${shade},${shade},${shade})`; // boundary
+    } else if (tile === 2) {
+      color = `rgb(30, ${shade}, 30)`; // TREE (green Southern feel)
+    } else if (tile === 3) {
+      color = `rgb(${shade}, ${shade}, ${shade/2})`; // ROCK
+    }
+
+    let wallHeight = canvas.height / (dist + 0.0001);
+
+    ctx.fillStyle = color;
+    ctx.fillRect(x, canvas.height/2 - wallHeight/2, step, wallHeight);
   }
 
-  // CROSSHAIR
+  // crosshair
   ctx.fillStyle = "red";
-  ctx.fillRect(screenWidth/2 - 2, screenHeight/2 - 2, 4, 4);
+  ctx.fillRect(canvas.width/2 - 2, canvas.height/2 - 2, 4, 4);
 }
 
-// LOOP (stable)
 function loop() {
   update();
   render();
