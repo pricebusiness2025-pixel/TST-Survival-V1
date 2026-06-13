@@ -2,21 +2,32 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Something, For Everyone - County V2</title>
+<title>Something, For Everyone - V3</title>
 <style>
-body { margin:0; background:#111; color:#ddd; font-family:monospace; overflow:hidden; }
-canvas { display:block; background:#1b1b1b; }
+html, body {
+  margin:0;
+  padding:0;
+  overflow:hidden;
+  background:#0e0e0e;
+  font-family:monospace;
+}
+
+canvas {
+  display:block;
+}
 
 #ui {
-  position:absolute; top:10px; left:10px;
-  width:340px;
+  position:absolute;
+  top:10px;
+  left:10px;
+  width:320px;
   background:rgba(0,0,0,0.75);
   padding:10px;
   border:1px solid #444;
+  color:#ddd;
 }
 
 button { width:100%; margin:2px 0; }
-pre { white-space:pre-wrap; }
 
 .tab { display:none; }
 .tab.active { display:block; }
@@ -24,40 +35,54 @@ pre { white-space:pre-wrap; }
 </head>
 <body>
 
-<canvas id="game" width="640" height="640"></canvas>
+<canvas id="game"></canvas>
 
 <div id="ui">
-  <button onclick="setTab('news')">News</button>
-  <button onclick="setTab('inv')">Inventory</button>
-  <button onclick="setTab('craft')">Crafting</button>
-  <button onclick="setTab('log')">Log</button>
+<button onclick="goFullscreen()">Fullscreen</button>
 
-  <div id="news" class="tab active">
-    <h3>Southern Table Times</h3>
-    <pre id="newsText"></pre>
-  </div>
+<button onclick="setTab('news')">News</button>
+<button onclick="setTab('inv')">Inventory</button>
+<button onclick="setTab('craft')">Crafting</button>
+<button onclick="setTab('log')">Log</button>
 
-  <div id="inv" class="tab">
-    <h3>Inventory</h3>
-    <pre id="invText"></pre>
-  </div>
+<div id="news" class="tab active">
+<h3>Southern Table Times</h3>
+<pre id="newsText"></pre>
+</div>
 
-  <div id="craft" class="tab">
-    <h3>Crafting</h3>
-    <button onclick="craftRifle()">Craft Pipe Rifle (3 Shot)</button>
-  </div>
+<div id="inv" class="tab">
+<h3>Inventory</h3>
+<pre id="invText"></pre>
+</div>
 
-  <div id="log" class="tab">
-    <h3>Log</h3>
-    <pre id="logText"></pre>
-  </div>
+<div id="craft" class="tab">
+<h3>Crafting</h3>
+<button onclick="craftRifle()">Craft Pipe Rifle</button>
+</div>
+
+<div id="log" class="tab">
+<h3>Log</h3>
+<pre id="logText"></pre>
+</div>
 </div>
 
 <script>
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-// TILE WORLD
+// FULLSCREEN FIX
+function resize(){
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener("resize", resize);
+resize();
+
+function goFullscreen(){
+  document.documentElement.requestFullscreen();
+}
+
+// WORLD (same county, smoother feel now)
 const map = [
 "FFFFFFFFFF",
 "FBFFRFWWFF",
@@ -68,16 +93,17 @@ const map = [
 ];
 
 const tiles = {
-"F":"#1f3d1f",
-"R":"#4a3b2a",
-"B":"#6b4b3a",
-"T":"#555",
-"W":"#0b2a3a"
+F:"#1f3d1f",
+R:"#4a3b2a",
+B:"#6b4b3a",
+T:"#555",
+W:"#0b2a3a"
 };
 
-// PLAYER
+// PLAYER (NOW SMOOTH FLOATING POSITION)
 let player = {
-x:1,y:1,
+x:1.5,
+y:1.5,
 dir:0,
 boat:false
 };
@@ -93,149 +119,155 @@ pipeRifle:false,
 ammo:3
 };
 
-let log = ["Entered County V2..."];
+let log = ["County V3 initialized"];
 
-// 🌎 POI SYSTEM (OPEN WORLD FEEL)
-const POIs = {
-"2,1": "ABANDONED FARM",
-"7,1": "SWAMP EDGE",
-"4,3": "HIGHWAY",
-"1,4": "TRAILER FARM"
+// INPUT STATE (SMOOTH CONTROLLER)
+let input = {
+forward:0,
+turn:0,
+shoot:false
 };
 
-// 📰 NEWSPAPER WORLD STATE
-function getNews() {
-let t =
-`THE SOUTHERN TABLE TIMES
-
-LOCAL REPORTS:
-`;
-
-if(player.y >= 3) t += "- Wildlife sightings increased near farms\n";
-if(player.x >= 5) t += "- Swamp routes partially flooded\n";
-t += "\nFARM REPORTS:\n";
-
-t += "- Miller Farm: Abandoned\n";
-t += "- Ridge Farm: Loot depleted\n";
-
-return t;
-}
+// CAMERA / MOVEMENT SPEED
+const speed = 0.05;
+const turnSpeed = 0.04;
 
 // DRAW WORLD
-function draw() {
-ctx.clearRect(0,0,640,640);
+function draw(){
+ctx.clearRect(0,0,canvas.width,canvas.height);
+
+const size = 64;
 
 for(let y=0;y<map.length;y++){
 for(let x=0;x<map[y].length;x++){
 ctx.fillStyle = tiles[map[y][x]];
-ctx.fillRect(x*64,y*64,64,64);
+ctx.fillRect(x*size,y*size,size,size);
 }
 }
 
-// POIs
-for(let key in POIs){
-let [x,y]=key.split(",").map(Number);
-ctx.fillStyle="orange";
-ctx.fillRect(x*64+20,y*64+20,24,24);
-}
-
-// PLAYER
+// player
 ctx.fillStyle="yellow";
-ctx.fillRect(player.x*64+20,player.y*64+20,24,24);
+ctx.beginPath();
+ctx.arc(player.x*64, player.y*64, 10, 0, Math.PI*2);
+ctx.fill();
 }
 
-// MOVE SYSTEM
-function moveForward(){
-let dx=0,dy=0;
-if(player.dir===0)dy=-1;
-if(player.dir===1)dx=1;
-if(player.dir===2)dy=1;
-if(player.dir===3)dx=-1;
-
-let nx=player.x+dx;
-let ny=player.y+dy;
-
-if(map[ny] && map[ny][nx] !== "W"){
-player.x=nx;
-player.y=ny;
-log.push("Moved to "+nx+","+ny);
-
-// POI interaction
-let poi = POIs[`${nx},${ny}`];
-if(poi){
-log.push("Discovered: "+poi);
-}
-}
+// COLLISION
+function isBlocked(x,y){
+let tx = Math.floor(x);
+let ty = Math.floor(y);
+if(!map[ty] || !map[ty][tx]) return true;
+return map[ty][tx] === "W";
 }
 
-function turnLeft(){ player.dir=(player.dir+3)%4; }
-function turnRight(){ player.dir=(player.dir+1)%4; }
+// MOVE SYSTEM (SMOOTH)
+function update(){
+let dx = 0, dy = 0;
 
-// 🔫 PIPE RIFLE
+// forward movement
+if(input.forward > 0){
+dx += Math.cos(player.dir) * speed;
+dy += Math.sin(player.dir) * speed;
+}
+
+// rotation
+player.dir += input.turn * turnSpeed;
+
+// apply movement
+let nx = player.x + dx;
+let ny = player.y + dy;
+
+if(!isBlocked(nx, player.y)) player.x = nx;
+if(!isBlocked(player.x, ny)) player.y = ny;
+}
+
+// SHOOT
 function shoot(){
 if(!inv.pipeRifle){ log.push("No rifle"); return; }
 if(inv.ammo<=0){ log.push("Click... empty"); return; }
+
 inv.ammo--;
-log.push("Bang! Ammo "+inv.ammo);
+log.push("Bang! Ammo: "+inv.ammo);
 }
 
-// 🔧 CRAFTING
+// CRAFT
 function craftRifle(){
-if(inv.pipeRifle){ log.push("Already crafted"); return; }
+if(inv.pipeRifle){ log.push("Already have rifle"); return; }
 
 if(inv.wood>=1 && inv.metal>=2 && inv.wire>=1){
 inv.wood--; inv.metal-=2; inv.wire--;
 inv.pipeRifle=true;
-log.push("Pipe Rifle crafted (3 shot)");
-} else log.push("Missing materials");
+log.push("Pipe Rifle crafted");
+}else{
+log.push("Missing materials");
+}
 }
 
-// 🧭 UI
+// UI
 function setTab(t){
 document.querySelectorAll(".tab").forEach(e=>e.classList.remove("active"));
 document.getElementById(t).classList.add("active");
 }
 
-// CONTROLLER
+function updateUI(){
+document.getElementById("invText").textContent =
+`Wood:${inv.wood}
+Metal:${inv.metal}
+Wire:${inv.wire}
+Rifle:${inv.pipeRifle}
+Ammo:${inv.ammo}`;
+
+document.getElementById("logText").textContent =
+log.slice(-10).join("\n");
+
+document.getElementById("newsText").textContent =
+"County stable. Farms reporting low activity.";
+}
+
+// 🎮 CONTROLLER (FIXED + ANALOG)
+let gpIndex = null;
+
+window.addEventListener("gamepadconnected",(e)=>{
+gpIndex = e.gamepad.index;
+log.push("Controller connected");
+});
+
 function gamepad(){
-let gp=navigator.getGamepads()[0];
+const gp = navigator.getGamepads()[gpIndex];
+
 if(gp){
-if(gp.buttons[12].pressed) moveForward();
-if(gp.buttons[14].pressed) turnLeft();
-if(gp.buttons[15].pressed) turnRight();
+let lx = gp.axes[0];
+let ly = gp.axes[1];
+
+// movement (left stick forward/back)
+input.forward = -ly;
+
+// turn (left/right)
+input.turn = lx * 0.8;
+
+// shoot (A)
 if(gp.buttons[0].pressed) shoot();
 }
+
 requestAnimationFrame(gamepad);
 }
 
-// KEYBOARD
+// KEYBOARD fallback
 document.addEventListener("keydown",(e)=>{
-if(e.key==="w")moveForward();
-if(e.key==="a")turnLeft();
-if(e.key==="d")turnRight();
-if(e.key===" ")shoot();
+if(e.key==="w") input.forward = 1;
+if(e.key==="a") input.turn = -1;
+if(e.key==="d") input.turn = 1;
+if(e.key===" ") shoot();
 });
 
-// UI UPDATE
-function updateUI(){
-document.getElementById("invText").textContent =
-`Wood: ${inv.wood}
-Metal: ${inv.metal}
-Wire: ${inv.wire}
-Nails: ${inv.nails}
-
-Pipe Rifle: ${inv.pipeRifle}
-Ammo: ${inv.ammo}`;
-
-document.getElementById("logText").textContent =
-log.slice(-12).join("\n");
-
-document.getElementById("newsText").textContent =
-getNews();
-}
+document.addEventListener("keyup",()=>{
+input.forward = 0;
+input.turn = 0;
+});
 
 // LOOP
 function loop(){
+update();
 draw();
 updateUI();
 requestAnimationFrame(loop);
@@ -246,4 +278,4 @@ gamepad();
 </script>
 
 </body>
-  </html>
+</html>
