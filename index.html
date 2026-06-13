@@ -2,35 +2,41 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Something, For Everyone - V3</title>
+<title>Something, For Everyone - V4</title>
 <style>
 html, body {
   margin:0;
-  padding:0;
   overflow:hidden;
-  background:#0e0e0e;
+  background:#0b0b0b;
   font-family:monospace;
 }
 
-canvas {
-  display:block;
-}
+canvas { display:block; }
 
 #ui {
   position:absolute;
   top:10px;
   left:10px;
-  width:320px;
-  background:rgba(0,0,0,0.75);
-  padding:10px;
+  width:360px;
+  background:rgba(0,0,0,0.85);
   border:1px solid #444;
+  padding:10px;
   color:#ddd;
+  z-index:10;
 }
 
-button { width:100%; margin:2px 0; }
+button {
+  width:100%;
+  margin:2px 0;
+  background:#222;
+  color:#ddd;
+  border:1px solid #444;
+}
 
-.tab { display:none; }
+.tab { display:none; max-height:300px; overflow:auto; }
 .tab.active { display:block; }
+
+pre { white-space:pre-wrap; }
 </style>
 </head>
 <body>
@@ -38,15 +44,17 @@ button { width:100%; margin:2px 0; }
 <canvas id="game"></canvas>
 
 <div id="ui">
+
 <button onclick="goFullscreen()">Fullscreen</button>
 
+<!-- 📰 NEWSPAPER TABS -->
 <button onclick="setTab('news')">News</button>
 <button onclick="setTab('inv')">Inventory</button>
 <button onclick="setTab('craft')">Crafting</button>
-<button onclick="setTab('log')">Log</button>
+<button onclick="setTab('log')">County Log</button>
 
 <div id="news" class="tab active">
-<h3>Southern Table Times</h3>
+<h3>The Southern Table Times</h3>
 <pre id="newsText"></pre>
 </div>
 
@@ -56,21 +64,21 @@ button { width:100%; margin:2px 0; }
 </div>
 
 <div id="craft" class="tab">
-<h3>Crafting</h3>
+<h3>Field Crafting</h3>
 <button onclick="craftRifle()">Craft Pipe Rifle</button>
 </div>
 
 <div id="log" class="tab">
-<h3>Log</h3>
+<h3>Survivor Log</h3>
 <pre id="logText"></pre>
 </div>
+
 </div>
 
 <script>
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-// FULLSCREEN FIX
 function resize(){
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
@@ -82,149 +90,201 @@ function goFullscreen(){
   document.documentElement.requestFullscreen();
 }
 
-// WORLD (same county, smoother feel now)
+/* =========================
+   🌎 RAYCAST WORLD (DOOM STYLE)
+========================= */
+
 const map = [
-"FFFFFFFFFF",
-"FBFFRFWWFF",
-"FFFFRFWWFF",
-"RRRRRRRRRR",
-"FTFFRFFBFF",
-"FFFFFFFFFF"
+"WWWWWWWWWW",
+"WFFBFFRFFW",
+"WFFBFFRFFW",
+"WFFRRRRFFW",
+"WFFFTTFFFW",
+"WWWWWWWWWW"
 ];
 
-const tiles = {
-F:"#1f3d1f",
-R:"#4a3b2a",
-B:"#6b4b3a",
-T:"#555",
-W:"#0b2a3a"
+const tex = {
+"F":"#1f4d1f", // forest
+"W":"#0a1f2a", // swamp fog
+"B":"#5a3a2a", // barn
+"R":"#4a3b2a", // road
+"T":"#666"     // trailer
 };
 
-// PLAYER (NOW SMOOTH FLOATING POSITION)
 let player = {
-x:1.5,
-y:1.5,
-dir:0,
-boat:false
+x:2.5,
+y:2.5,
+dir:0
 };
 
-// INVENTORY
-let inv = {
-wood:1,
-metal:2,
-wire:1,
-nails:2,
-gunpowder:1,
-pipeRifle:false,
-ammo:3
-};
+/* =========================
+   🎮 INPUT
+========================= */
 
-let log = ["County V3 initialized"];
-
-// INPUT STATE (SMOOTH CONTROLLER)
 let input = {
 forward:0,
-turn:0,
-shoot:false
+turn:0
 };
 
-// CAMERA / MOVEMENT SPEED
-const speed = 0.05;
-const turnSpeed = 0.04;
+const speed = 0.04;
+const turnSpeed = 0.03;
 
-// DRAW WORLD
-function draw(){
-ctx.clearRect(0,0,canvas.width,canvas.height);
+/* =========================
+   🧠 RAYCAST ENGINE
+========================= */
 
-const size = 64;
+function castRays(){
+const fov = Math.PI/3;
+const rays = canvas.width;
 
-for(let y=0;y<map.length;y++){
-for(let x=0;x<map[y].length;x++){
-ctx.fillStyle = tiles[map[y][x]];
-ctx.fillRect(x*size,y*size,size,size);
+for(let i=0;i<rays;i++){
+
+let rayAngle = player.dir - fov/2 + (i/rays)*fov;
+
+let dist = 0;
+let hit = false;
+let tile = "W";
+
+while(!hit && dist < 10){
+  dist += 0.02;
+
+  let rx = player.x + Math.cos(rayAngle)*dist;
+  let ry = player.y + Math.sin(rayAngle)*dist;
+
+  let tx = Math.floor(rx);
+  let ty = Math.floor(ry);
+
+  if(map[ty] && map[ty][tx] && map[ty][tx] !== " "){
+    tile = map[ty][tx];
+    hit = true;
+  }
+}
+
+// fish-eye correction
+dist = dist * Math.cos(rayAngle - player.dir);
+
+let wallHeight = (canvas.height / dist);
+
+let color = tex[tile] || "#000";
+
+ctx.fillStyle = color;
+ctx.fillRect(i, canvas.height/2 - wallHeight/2, 1, wallHeight);
+
 }
 }
 
-// player
-ctx.fillStyle="yellow";
-ctx.beginPath();
-ctx.arc(player.x*64, player.y*64, 10, 0, Math.PI*2);
-ctx.fill();
-}
+/* =========================
+   🚶 MOVEMENT
+========================= */
 
-// COLLISION
-function isBlocked(x,y){
+function isWall(x,y){
 let tx = Math.floor(x);
 let ty = Math.floor(y);
-if(!map[ty] || !map[ty][tx]) return true;
-return map[ty][tx] === "W";
+return !map[ty] || map[ty][tx] === "W";
 }
 
-// MOVE SYSTEM (SMOOTH)
 function update(){
-let dx = 0, dy = 0;
 
-// forward movement
-if(input.forward > 0){
-dx += Math.cos(player.dir) * speed;
-dy += Math.sin(player.dir) * speed;
-}
-
-// rotation
 player.dir += input.turn * turnSpeed;
 
-// apply movement
-let nx = player.x + dx;
-let ny = player.y + dy;
+let nx = player.x + Math.cos(player.dir) * input.forward * speed;
+let ny = player.y + Math.sin(player.dir) * input.forward * speed;
 
-if(!isBlocked(nx, player.y)) player.x = nx;
-if(!isBlocked(player.x, ny)) player.y = ny;
+if(!isWall(nx, player.y)) player.x = nx;
+if(!isWall(player.x, ny)) player.y = ny;
 }
 
-// SHOOT
+/* =========================
+   🔫 WEAPON
+========================= */
+
+let inv = {
+pipeRifle:false,
+ammo:3,
+wood:1,
+metal:2,
+wire:1
+};
+
+let log = ["Entered County V4..."];
+
 function shoot(){
-if(!inv.pipeRifle){ log.push("No rifle"); return; }
+if(!inv.pipeRifle){ log.push("No weapon"); return; }
 if(inv.ammo<=0){ log.push("Click... empty"); return; }
 
 inv.ammo--;
-log.push("Bang! Ammo: "+inv.ammo);
+log.push("Bang! Ammo "+inv.ammo);
 }
 
-// CRAFT
+/* =========================
+   🔧 CRAFTING
+========================= */
+
 function craftRifle(){
-if(inv.pipeRifle){ log.push("Already have rifle"); return; }
+if(inv.pipeRifle){ log.push("Already crafted"); return; }
 
 if(inv.wood>=1 && inv.metal>=2 && inv.wire>=1){
 inv.wood--; inv.metal-=2; inv.wire--;
-inv.pipeRifle=true;
+inv.pipeRifle = true;
 log.push("Pipe Rifle crafted");
 }else{
 log.push("Missing materials");
 }
 }
 
-// UI
-function setTab(t){
-document.querySelectorAll(".tab").forEach(e=>e.classList.remove("active"));
-document.getElementById(t).classList.add("active");
+/* =========================
+   📰 INTERACTIVE NEWSPAPER
+========================= */
+
+function getNews(){
+let t =
+`THE SOUTHERN TABLE TIMES
+
+FRONT PAGE:
+- County remains quiet
+- Farm activity minimal
+
+LOCAL REPORTS:
+- Swamp fog increasing
+- Barns reported abandoned
+
+CRAFTING NOTES:
+- Pipe rifle schematic confirmed
+- Scrap metal usable in field builds
+
+RUMORS:
+- Duck boat seen near river bend
+`;
+return t;
+}
+
+/* =========================
+   🧭 UI SYSTEM (REAL PAPER FEEL)
+========================= */
+
+function setTab(id){
+document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+document.getElementById(id).classList.add("active");
 }
 
 function updateUI(){
+document.getElementById("newsText").textContent = getNews();
+
 document.getElementById("invText").textContent =
-`Wood:${inv.wood}
-Metal:${inv.metal}
-Wire:${inv.wire}
-Rifle:${inv.pipeRifle}
-Ammo:${inv.ammo}`;
+`PIPE RIFLE: ${inv.pipeRifle}
+AMMO: ${inv.ammo}
+WOOD: ${inv.wood}
+METAL: ${inv.metal}
+WIRE: ${inv.wire}`;
 
 document.getElementById("logText").textContent =
-log.slice(-10).join("\n");
-
-document.getElementById("newsText").textContent =
-"County stable. Farms reporting low activity.";
+log.slice(-12).join("\n");
 }
 
-// 🎮 CONTROLLER (FIXED + ANALOG)
+/* =========================
+   🎮 CONTROLLER FIXED
+========================= */
+
 let gpIndex = null;
 
 window.addEventListener("gamepadconnected",(e)=>{
@@ -234,27 +294,28 @@ log.push("Controller connected");
 
 function gamepad(){
 const gp = navigator.getGamepads()[gpIndex];
-
 if(gp){
+
 let lx = gp.axes[0];
 let ly = gp.axes[1];
 
-// movement (left stick forward/back)
+input.turn = lx;
 input.forward = -ly;
 
-// turn (left/right)
-input.turn = lx * 0.8;
-
-// shoot (A)
 if(gp.buttons[0].pressed) shoot();
+
 }
 
 requestAnimationFrame(gamepad);
 }
 
-// KEYBOARD fallback
+/* =========================
+   ⌨️ KEYBOARD
+========================= */
+
 document.addEventListener("keydown",(e)=>{
 if(e.key==="w") input.forward = 1;
+if(e.key==="s") input.forward = -1;
 if(e.key==="a") input.turn = -1;
 if(e.key==="d") input.turn = 1;
 if(e.key===" ") shoot();
@@ -263,18 +324,28 @@ if(e.key===" ") shoot();
 document.addEventListener("keyup",()=>{
 input.forward = 0;
 input.turn = 0;
+input.turn = 0;
 });
 
-// LOOP
+/* =========================
+   LOOP
+========================= */
+
 function loop(){
 update();
-draw();
+ctx.fillStyle="#000";
+ctx.fillRect(0,0,canvas.width,canvas.height);
+
+castRays();
+
 updateUI();
+
 requestAnimationFrame(loop);
 }
 
 loop();
 gamepad();
+
 </script>
 
 </body>
