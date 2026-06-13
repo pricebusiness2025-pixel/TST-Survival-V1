@@ -1,184 +1,249 @@
-<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Something, For Everyone - County V2</title>
+<style>
+body { margin:0; background:#111; color:#ddd; font-family:monospace; overflow:hidden; }
+canvas { display:block; background:#1b1b1b; }
+
+#ui {
+  position:absolute; top:10px; left:10px;
+  width:340px;
+  background:rgba(0,0,0,0.75);
+  padding:10px;
+  border:1px solid #444;
+}
+
+button { width:100%; margin:2px 0; }
+pre { white-space:pre-wrap; }
+
+.tab { display:none; }
+.tab.active { display:block; }
+</style>
+</head>
+<body>
+
+<canvas id="game" width="640" height="640"></canvas>
+
+<div id="ui">
+  <button onclick="setTab('news')">News</button>
+  <button onclick="setTab('inv')">Inventory</button>
+  <button onclick="setTab('craft')">Crafting</button>
+  <button onclick="setTab('log')">Log</button>
+
+  <div id="news" class="tab active">
+    <h3>Southern Table Times</h3>
+    <pre id="newsText"></pre>
+  </div>
+
+  <div id="inv" class="tab">
+    <h3>Inventory</h3>
+    <pre id="invText"></pre>
+  </div>
+
+  <div id="craft" class="tab">
+    <h3>Crafting</h3>
+    <button onclick="craftRifle()">Craft Pipe Rifle (3 Shot)</button>
+  </div>
+
+  <div id="log" class="tab">
+    <h3>Log</h3>
+    <pre id="logText"></pre>
+  </div>
+</div>
 
 <script>
-const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0xaac7b5, 60, 400);
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
 
-const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.1, 1000);
-camera.position.set(50, 60, 80);
+// TILE WORLD
+const map = [
+"FFFFFFFFFF",
+"FBFFRFWWFF",
+"FFFFRFWWFF",
+"RRRRRRRRRR",
+"FTFFRFFBFF",
+"FFFFFFFFFF"
+];
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(innerWidth, innerHeight);
-document.body.appendChild(renderer.domElement);
+const tiles = {
+"F":"#1f3d1f",
+"R":"#4a3b2a",
+"B":"#6b4b3a",
+"T":"#555",
+"W":"#0b2a3a"
+};
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+// PLAYER
+let player = {
+x:1,y:1,
+dir:0,
+boat:false
+};
 
-const light = new THREE.DirectionalLight(0xffffff, 1);
-light.position.set(50, 100, 20);
-scene.add(light);
+// INVENTORY
+let inv = {
+wood:1,
+metal:2,
+wire:1,
+nails:2,
+gunpowder:1,
+pipeRifle:false,
+ammo:3
+};
 
-window.addEventListener("resize", () => {
-  camera.aspect = innerWidth/innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
+let log = ["Entered County V2..."];
+
+// 🌎 POI SYSTEM (OPEN WORLD FEEL)
+const POIs = {
+"2,1": "ABANDONED FARM",
+"7,1": "SWAMP EDGE",
+"4,3": "HIGHWAY",
+"1,4": "TRAILER FARM"
+};
+
+// 📰 NEWSPAPER WORLD STATE
+function getNews() {
+let t =
+`THE SOUTHERN TABLE TIMES
+
+LOCAL REPORTS:
+`;
+
+if(player.y >= 3) t += "- Wildlife sightings increased near farms\n";
+if(player.x >= 5) t += "- Swamp routes partially flooded\n";
+t += "\nFARM REPORTS:\n";
+
+t += "- Miller Farm: Abandoned\n";
+t += "- Ridge Farm: Loot depleted\n";
+
+return t;
+}
+
+// DRAW WORLD
+function draw() {
+ctx.clearRect(0,0,640,640);
+
+for(let y=0;y<map.length;y++){
+for(let x=0;x<map[y].length;x++){
+ctx.fillStyle = tiles[map[y][x]];
+ctx.fillRect(x*64,y*64,64,64);
+}
+}
+
+// POIs
+for(let key in POIs){
+let [x,y]=key.split(",").map(Number);
+ctx.fillStyle="orange";
+ctx.fillRect(x*64+20,y*64+20,24,24);
+}
+
+// PLAYER
+ctx.fillStyle="yellow";
+ctx.fillRect(player.x*64+20,player.y*64+20,24,24);
+}
+
+// MOVE SYSTEM
+function moveForward(){
+let dx=0,dy=0;
+if(player.dir===0)dy=-1;
+if(player.dir===1)dx=1;
+if(player.dir===2)dy=1;
+if(player.dir===3)dx=-1;
+
+let nx=player.x+dx;
+let ny=player.y+dy;
+
+if(map[ny] && map[ny][nx] !== "W"){
+player.x=nx;
+player.y=ny;
+log.push("Moved to "+nx+","+ny);
+
+// POI interaction
+let poi = POIs[`${nx},${ny}`];
+if(poi){
+log.push("Discovered: "+poi);
+}
+}
+}
+
+function turnLeft(){ player.dir=(player.dir+3)%4; }
+function turnRight(){ player.dir=(player.dir+1)%4; }
+
+// 🔫 PIPE RIFLE
+function shoot(){
+if(!inv.pipeRifle){ log.push("No rifle"); return; }
+if(inv.ammo<=0){ log.push("Click... empty"); return; }
+inv.ammo--;
+log.push("Bang! Ammo "+inv.ammo);
+}
+
+// 🔧 CRAFTING
+function craftRifle(){
+if(inv.pipeRifle){ log.push("Already crafted"); return; }
+
+if(inv.wood>=1 && inv.metal>=2 && inv.wire>=1){
+inv.wood--; inv.metal-=2; inv.wire--;
+inv.pipeRifle=true;
+log.push("Pipe Rifle crafted (3 shot)");
+} else log.push("Missing materials");
+}
+
+// 🧭 UI
+function setTab(t){
+document.querySelectorAll(".tab").forEach(e=>e.classList.remove("active"));
+document.getElementById(t).classList.add("active");
+}
+
+// CONTROLLER
+function gamepad(){
+let gp=navigator.getGamepads()[0];
+if(gp){
+if(gp.buttons[12].pressed) moveForward();
+if(gp.buttons[14].pressed) turnLeft();
+if(gp.buttons[15].pressed) turnRight();
+if(gp.buttons[0].pressed) shoot();
+}
+requestAnimationFrame(gamepad);
+}
+
+// KEYBOARD
+document.addEventListener("keydown",(e)=>{
+if(e.key==="w")moveForward();
+if(e.key==="a")turnLeft();
+if(e.key==="d")turnRight();
+if(e.key===" ")shoot();
 });
 
-/* ----------------------------
-   SAFE NOISE (NO LIBRARY)
----------------------------- */
-function hash(x, z) {
-  let n = Math.sin(x * 127.1 + z * 311.7) * 43758.5453;
-  return n - Math.floor(n);
+// UI UPDATE
+function updateUI(){
+document.getElementById("invText").textContent =
+`Wood: ${inv.wood}
+Metal: ${inv.metal}
+Wire: ${inv.wire}
+Nails: ${inv.nails}
+
+Pipe Rifle: ${inv.pipeRifle}
+Ammo: ${inv.ammo}`;
+
+document.getElementById("logText").textContent =
+log.slice(-12).join("\n");
+
+document.getElementById("newsText").textContent =
+getNews();
 }
 
-function noise(x, z) {
-  return hash(x, z) * 2 - 1;
+// LOOP
+function loop(){
+draw();
+updateUI();
+requestAnimationFrame(loop);
 }
 
-/* ----------------------------
-   TERRAIN HEIGHT
----------------------------- */
-function getHeight(x, z) {
-  return (
-    noise(x * 0.05, z * 0.05) * 10 +
-    noise(x * 0.01, z * 0.01) * 25
-  );
-}
-
-/* ----------------------------
-   TREES
----------------------------- */
-function tree(x, y, z) {
-  const g = new THREE.Group();
-
-  const trunk = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.3, 0.5, 3),
-    new THREE.MeshStandardMaterial({ color: 0x6b4f2a })
-  );
-  trunk.position.y = 1.5;
-
-  const leaves = new THREE.Mesh(
-    new THREE.ConeGeometry(1.5, 4, 6),
-    new THREE.MeshStandardMaterial({ color: 0x2f7a3b })
-  );
-  leaves.position.y = 4;
-
-  g.add(trunk, leaves);
-  g.position.set(x, y, z);
-
-  return g;
-}
-
-/* ----------------------------
-   TERRAIN CHUNK
----------------------------- */
-const SIZE = 100;
-
-function chunk(cx, cz) {
-  const geo = new THREE.PlaneGeometry(SIZE, SIZE, 20, 20);
-  geo.rotateX(-Math.PI / 2);
-
-  const pos = geo.attributes.position;
-
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i) + cx * SIZE;
-    const z = pos.getZ(i) + cz * SIZE;
-
-    pos.setY(i, getHeight(x, z));
-  }
-
-  geo.computeVertexNormals();
-
-  const mesh = new THREE.Mesh(
-    geo,
-    new THREE.MeshStandardMaterial({ color: 0x4f7a3a })
-  );
-
-  mesh.position.set(cx * SIZE, 0, cz * SIZE);
-  scene.add(mesh);
-
-  // trees
-  for (let i = 0; i < 12; i++) {
-    const x = cx * SIZE + Math.random() * SIZE;
-    const z = cz * SIZE + Math.random() * SIZE;
-    const y = getHeight(x, z);
-
-    if (Math.random() < 0.6) {
-      scene.add(tree(x, y, z));
-    }
-  }
-}
-
-/* ----------------------------
-   FARMS
----------------------------- */
-function cabin(x, y, z) {
-  const g = new THREE.Group();
-
-  const base = new THREE.Mesh(
-    new THREE.BoxGeometry(6, 3, 6),
-    new THREE.MeshStandardMaterial({ color: 0x8b5a2b })
-  );
-  base.position.y = 1.5;
-
-  const roof = new THREE.Mesh(
-    new THREE.ConeGeometry(5, 3, 4),
-    new THREE.MeshStandardMaterial({ color: 0x3a2a22 })
-  );
-  roof.position.y = 4;
-
-  g.add(base, roof);
-  g.position.set(x, y, z);
-
-  return g;
-}
-
-/* ----------------------------
-   WORLD BUILD
----------------------------- */
-const farms = [];
-
-function buildWorld() {
-
-  for (let x = -2; x <= 2; x++) {
-    for (let z = -2; z <= 2; z++) {
-
-      const fx = x * 200;
-      const fz = z * 200;
-
-      const fy = getHeight(fx, fz);
-
-      if (Math.random() < 0.3) {
-        const f = cabin(fx, fy, fz);
-        scene.add(f);
-        farms.push(new THREE.Vector3(fx, fy, fz));
-      }
-    }
-  }
-
-  for (let x = -2; x <= 2; x++) {
-    for (let z = -2; z <= 2; z++) {
-      chunk(x, z);
-    }
-  }
-}
-
-/* ----------------------------
-   CAMERA (STATIC TEST FIRST)
----------------------------- */
-camera.position.set(60, 60, 60);
-camera.lookAt(0, 0, 0);
-
-buildWorld();
-
-/* ----------------------------
-   RENDER LOOP
----------------------------- */
-function animate() {
-  requestAnimationFrame(animate);
-  renderer.render(scene, camera);
-}
-
-animate();
-
+loop();
+gamepad();
 </script>
+
+</body>
+  </html>
